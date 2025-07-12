@@ -1,0 +1,4 @@
+20240830-184447<DEBUG:000044D8>: KGLOG_PROCESS_ERROR(m_hModule) at line 24 in DebugHelp::Init
+20240830-184448<DEBUG:000044D8>: ActiveMachineAndExceptionNotCapture	C:\Users\TOSHIBA\Desktop\minidump\9d2d5a3c-bd3e-42ca-bc0b-ad5c068af495.xml 
+20240830-184448<DEBUG:000044D8>: Dumper Init:Success
+20240830-184500<DEBUG:000044D8>: Dumper Unit
