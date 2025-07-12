@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ứng Dụng Dịch Vụ Đa Năng</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        /* Custom styles for better aesthetics */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        .btn-primary {
+            @apply px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1;
+        }
+        .card {
+            @apply bg-white rounded-xl shadow-lg p-6 transition duration-300 ease-in-out transform hover:-translate-y-1 hover:shadow-xl;
+        }
+        .input-field {
+            @apply shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-header {
+            @apply text-xl font-semibold text-gray-800 mb-4;
+        }
+        .modal-body {
+            @apply text-gray-700 mb-6;
+        }
+        .modal-footer button {
+            @apply px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app-root" class="min-h-screen flex flex-col">
+        <!-- Content will be rendered here by JavaScript -->
+    </div>
+
+    <!-- Custom Modal HTML -->
+    <div id="custom-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 id="modal-title" class="modal-header"></h2>
+            <p id="modal-message" class="modal-body"></p>
+            <div class="modal-footer">
+                <button id="modal-close-btn">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the Canvas environment (these will be undefined when running locally)
+        // Khi chạy cục bộ, bạn cần điền thông tin cấu hình Firebase của mình vào đây.
+        // HƯỚNG DẪN: Lấy cấu hình này từ Firebase Console của dự án bạn đã tạo:
+        // 1. Truy cập Firebase Console -> Dự án của bạn.
+        // 2. Nhấp vào biểu tượng "Cài đặt dự án" (Project settings) (hình bánh răng) bên cạnh "Tổng quan về dự án" (Project overview).
+        // 3. Cuộn xuống phần "Ứng dụng của bạn" (Your apps).
+        // 4. Nếu chưa có ứng dụng web, nhấp vào biểu tượng "</>" (Web) để thêm ứng dụng web mới.
+        // 5. Sao chép đối tượng `firebaseConfig` được cung cấp và dán vào đây.
+        const appId = 'hieu-nguyen-cf05b'; // Thay thế bằng ID dự án Firebase của bạn (ví dụ: my-delivery-app-12345)
+    const firebaseConfig = {
+  apiKey: "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI",
+  authDomain: "hieu-nguyen-cf05b.firebaseapp.com",
+  projectId: "hieu-nguyen-cf05b",
+  storageBucket: "hieu-nguyen-cf05b.firebasestorage.app",
+  messagingSenderId: "43504362983",
+  appId: "1:43504362983:web:887ba856c9189f2a4e4942",
+  measurementId: "G-R6PNSC5QX5"
+};
+        const initialAuthToken = null; // Không cần thiết khi chạy cục bộ, đăng nhập ẩn danh sẽ được sử dụng
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let currentUser = null;
+        let currentUserId = null;
+        let isAuthReady = false;
+
+        // --- Utility Functions ---
+
+        // Function to show custom modal
+        function showMessage(title, message) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = message;
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+
+        // Function to hide custom modal
+        document.getElementById('modal-close-btn').addEventListener('click', () => {
+            document.getElementById('custom-modal').classList.add('hidden');
+        });
+
+        // Function to call the LLM for text generation
+        async function generateTextWithLLM(prompt) {
+            let chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            const payload = { contents: chatHistory };
+            // Khi chạy cục bộ, bạn cần điền API key của Google Gemini vào đây.
+            // HƯỚNG DẪN: Lấy API key từ Google Cloud Console hoặc Google AI Studio.
+            // 1. Truy cập https://console.cloud.google.com/ hoặc https://aistudio.google.com/
+            // 2. Tạo một dự án mới (nếu chưa có).
+            // 3. Kích hoạt Gemini API (hoặc Generative Language API).
+            // 4. Tạo một API key.
+            const apiKey = "AIzaSyADQc9AB6umXk6TY8-UyB1QMbonbLTM99Y"; // Thay thế bằng API key thực của bạn
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    return result.candidates[0].content.parts[0].text;
+                } else {
+                    console.error("LLM response structure unexpected:", result);
+                    return "Không thể tạo mô tả.";
+                }
+            } catch (error) {
+                console.error("Lỗi khi gọi LLM:", error);
+                return "Lỗi khi gọi LLM.";
+            }
+        }
+
+        // --- Page Rendering Functions ---
+
+        function renderHomePage() {
+            const appRoot = document.getElementById('app-root');
+            appRoot.innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 p-4">
+                    <h1 class="text-4xl font-extrabold text-gray-800 mb-8 text-center">Chào mừng đến với Ứng dụng Dịch vụ!</h1>
+                    <p class="text-lg text-gray-600 mb-10 text-center max-w-md">
+                        Chọn dịch vụ bạn muốn sử dụng:
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+                        <button id="food-delivery-btn" class="bg-white hover:bg-blue-500 text-blue-700 hover:text-white font-bold py-6 px-4 rounded-xl shadow-lg hover:shadow-xl transition duration-300 ease-in-out transform hover:-translate-y-1 flex flex-col items-center justify-center text-center">
+                            <span role="img" aria-label="food" class="text-5xl mb-3">🍔</span>
+                            <span class="text-xl">Đặt Đồ Ăn</span>
+                        </button>
+                        <button id="shipper-service-btn" class="bg-white hover:bg-green-500 text-green-700 hover:text-white font-bold py-6 px-4 rounded-xl shadow-lg hover:shadow-xl transition duration-300 ease-in-out transform hover:-translate-y-1 flex flex-col items-center justify-center text-center">
+                            <span role="img" aria-label="delivery" class="text-5xl mb-3">📦</span>
+                            <span class="text-xl">Giao Hàng</span>
+                        </button>
+                        <button id="ride-hailing-btn" class="bg-white hover:bg-purple-500 text-purple-700 hover:text-white font-bold py-6 px-4 rounded-xl shadow-lg hover:shadow-xl transition duration-300 ease-in-out transform hover:-translate-y-1 flex flex-col items-center justify-center text-center">
+                            <span role="img" aria-label="ride" class="text-5xl mb-3">🚗</span>
+                            <span class="text-xl">Gọi Xe</span>
+                        </button>
+                    </div>
+                    <p class="mt-10 text-sm text-gray-500">
+                        ID người dùng của bạn: <span class="font-mono text-gray-700 break-all">${currentUserId}</span>
+                    </p>
+                </div>
+            `;
+
+            document.getElementById('food-delivery-btn').addEventListener('click', () => renderFoodDeliveryPage());
+            document.getElementById('shipper-service-btn').addEventListener('click', () => renderShipperServicePage());
+            document.getElementById('ride-hailing-btn').addEventListener('click', () => renderRideHailingPage());
+        }
+
+        let restaurants = [];
+        let selectedRestaurant = null;
+        let cart = [];
+
+        async function addDummyRestaurants() {
+            const dummyData = [
+                { name: "Phở Gia Truyền", address: "123 Đường Nguyễn Huệ", menu: [
+                    { id: "pho-bo", name: "Phở Bò", price: 50000, description: "Món phở bò truyền thống với nước dùng đậm đà." },
+                    { id: "pho-ga", name: "Phở Gà", price: 45000, description: "Phở gà thơm ngon, thịt gà mềm." }
+                ]},
+                { name: "Bún Chả Hà Nội", address: "456 Đường Lê Lợi", menu: [
+                    { id: "bun-cha", name: "Bún Chả", price: 40000, description: "Bún chả Hà Nội chuẩn vị với nem và thịt nướng." },
+                    { id: "nem-ran", name: "Nem Rán", price: 10000, description: "Nem rán giòn rụm, nhân thịt thơm ngon." }
+                ]},
+                { name: "Cơm Tấm Sài Gòn", address: "789 Đường Trần Hưng Đạo", menu: [
+                    { id: "com-tam-suon", name: "Cơm Tấm Sườn", price: 55000, description: "Cơm tấm sườn nướng đậm đà, bì chả trứng." },
+                    { id: "com-tam-bi", name: 45000, description: "Cơm tấm bì chả, thơm ngon." }
+                ]}
+            ];
+
+            for (const data of dummyData) {
+                try {
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/restaurants`), data);
+                } catch (e) {
+                    console.error("Lỗi khi thêm nhà hàng mẫu:", e);
+                }
+            }
+        }
+
+        function renderFoodDeliveryPage() {
+            const appRoot = document.getElementById('app-root');
+            appRoot.innerHTML = `
+                <div class="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+                    <div class="flex justify-between items-center mb-6">
+                        <h1 class="text-3xl font-bold text-gray-800">Đặt Đồ Ăn</h1>
+                        <button id="back-to-home-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition duration-200">
+                            Quay lại
+                        </button>
+                    </div>
+                    <div id="food-content"></div>
+                </div>
+            `;
+            document.getElementById('back-to-home-btn').addEventListener('click', () => {
+                selectedRestaurant = null; // Reset selected restaurant
+                cart = []; // Clear cart
+                renderHomePage();
+            });
+
+            loadRestaurants();
+        }
+
+        function loadRestaurants() {
+            if (!isAuthReady) {
+                console.log("Firebase Auth not ready, retrying loadRestaurants...");
+                setTimeout(loadRestaurants, 500); // Retry after 500ms
+                return;
+            }
+
+            const restaurantsRef = collection(db, `artifacts/${appId}/public/data/restaurants`);
+            onSnapshot(restaurantsRef, (snapshot) => {
+                restaurants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (restaurants.length === 0) {
+                    addDummyRestaurants(); // Add dummy data if no restaurants exist
+                }
+                displayFoodContent();
+            }, (error) => {
+                console.error("Lỗi khi lấy nhà hàng:", error);
+                showMessage("Lỗi", "Không thể tải danh sách nhà hàng.");
+            });
+        }
+
+        function displayFoodContent() {
+            const foodContentDiv = document.getElementById('food-content');
+            if (!selectedRestaurant) {
+                foodContentDiv.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${restaurants.map(restaurant => `
+                            <div class="bg-white rounded-xl shadow-md p-6 cursor-pointer hover:shadow-lg transition duration-300 transform hover:-translate-y-1" data-restaurant-id="${restaurant.id}">
+                                <h2 class="text-xl font-semibold text-gray-800 mb-2">${restaurant.name}</h2>
+                                <p class="text-gray-600 text-sm">${restaurant.address}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                document.querySelectorAll('[data-restaurant-id]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = e.currentTarget.dataset.itemId; // Changed from restaurantId to itemId for consistency, but should be restaurantId here
+                        selectedRestaurant = restaurants.find(r => r.id === id);
+                        displayFoodContent(); // Re-render to show menu
+                    });
+                });
+            } else {
+                foodContentDiv.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <div class="flex justify-between items-center mb-6 border-b pb-4">
+                            <h2 class="text-2xl font-bold text-gray-800">${selectedRestaurant.name}</h2>
+                            <button id="change-restaurant-btn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition duration-200">
+                                Chọn nhà hàng khác
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Menu Section -->
+                            <div class="lg:col-span-2">
+                                <h3 class="text-xl font-semibold text-gray-700 mb-4">Thực Đơn</h3>
+                                <div class="space-y-4" id="menu-items">
+                                    ${selectedRestaurant.menu.map(item => `
+                                        <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg shadow-sm">
+                                            <div>
+                                                <h4 class="font-medium text-gray-800">${item.name}</h4>
+                                                <p class="text-sm text-gray-600">${item.description}</p>
+                                                <p class="text-blue-600 font-semibold">${item.price.toLocaleString()} VNĐ</p>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <button class="p-2 bg-yellow-400 text-white rounded-full hover:bg-yellow-500 transition duration-200 generate-description-btn" data-item-id="${item.id}" title="Tạo mô tả">
+                                                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                    </svg>
+                                                </button>
+                                                <button class="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition duration-200 add-to-cart-btn" data-item-id="${item.id}" title="Thêm vào giỏ hàng">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+
+                            <!-- Cart Section -->
+                            <div class="bg-gray-100 rounded-xl p-6 shadow-md">
+                                <h3 class="text-xl font-semibold text-gray-700 mb-4">Giỏ Hàng</h3>
+                                <div id="cart-items" class="space-y-3">
+                                    <!-- Cart items will be rendered here -->
+                                </div>
+                                <div class="border-t pt-4 mt-4 flex justify-between items-center">
+                                    <span class="text-lg font-bold text-gray-800">Tổng cộng:</span>
+                                    <span id="cart-total" class="text-lg font-bold text-blue-700">0 VNĐ</span>
+                                </div>
+                                <button id="place-order-btn" class="w-full mt-6 py-3 bg-green-500 text-white rounded-md font-semibold hover:bg-green-600 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    Đặt Hàng Ngay
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('change-restaurant-btn').addEventListener('click', () => {
+                    selectedRestaurant = null;
+                    cart = []; // Clear cart when changing restaurant
+                    displayFoodContent();
+                });
+
+                document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const itemId = e.currentTarget.dataset.itemId;
+                        const item = selectedRestaurant.menu.find(m => m.id === itemId);
+                        addToCart(item);
+                    });
+                });
+
+                document.querySelectorAll('.generate-description-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const itemId = e.currentTarget.dataset.itemId;
+                        const item = selectedRestaurant.menu.find(m => m.id === itemId);
+                        e.currentTarget.innerHTML = `
+                            <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        `;
+                        e.currentTarget.disabled = true; // Disable button during generation
+                        const description = await generateTextWithLLM(`Viết một mô tả ngắn gọn, hấp dẫn cho món ăn "${item.name}" từ nhà hàng "${selectedRestaurant.name}". Giá của món này là ${item.price.toLocaleString()} VNĐ.`);
+                        showMessage(`Mô tả cho ${item.name}`, description);
+                        e.currentTarget.innerHTML = `
+                            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        `;
+                        e.currentTarget.disabled = false; // Re-enable button
+                    });
+                });
+
+                document.getElementById('place-order-btn').addEventListener('click', placeOrder);
+                updateCartDisplay(); // Initial display of cart
+            }
+        }
+
+        function addToCart(item) {
+            const existingItem = cart.find((i) => i.id === item.id);
+            if (existingItem) {
+                cart = cart.map((i) =>
+                    i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+                );
+            } else {
+                cart = [...cart, { ...item, quantity: 1 }];
+            }
+            updateCartDisplay();
+            showMessage("Thêm vào giỏ hàng", `${item.name} đã được thêm vào giỏ hàng.`);
+        }
+
+        function removeFromCart(itemToRemove) {
+            const existingItem = cart.find((item) => item.id === itemToRemove.id);
+            if (existingItem.quantity > 1) {
+                cart = cart.map((item) =>
+                    item.id === itemToRemove.id ? { ...item, quantity: item.quantity - 1 } : item
+                );
+            } else {
+                cart = cart.filter((item) => item.id !== itemToRemove.id);
+            }
+            updateCartDisplay();
+        }
+
+        function calculateTotal() {
+            return cart.reduce((total, item) => total + item.price * item.quantity, 0);
+        }
+
+        function updateCartDisplay() {
+            const cartItemsDiv = document.getElementById('cart-items');
+            const cartTotalSpan = document.getElementById('cart-total');
+            const placeOrderBtn = document.getElementById('place-order-btn');
+
+            if (!cartItemsDiv || !cartTotalSpan || !placeOrderBtn) return; // Ensure elements exist
+
+            if (cart.length === 0) {
+                cartItemsDiv.innerHTML = '<p class="text-gray-500">Giỏ hàng trống.</p>';
+                placeOrderBtn.disabled = true;
+            } else {
+                cartItemsDiv.innerHTML = cart.map(item => `
+                    <div class="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm">
+                        <div>
+                            <p class="font-medium text-gray-800">${item.name}</p>
+                            <p class="text-sm text-gray-600">${item.quantity} x ${item.price.toLocaleString()} VNĐ</p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button class="p-1 bg-red-400 text-white rounded-full hover:bg-red-500 transition duration-200 remove-from-cart-btn" data-item-id="${item.id}">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <button class="p-1 bg-green-400 text-white rounded-full hover:bg-green-500 transition duration-200 add-more-to-cart-btn" data-item-id="${item.id}">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                placeOrderBtn.disabled = false;
+
+                // Attach event listeners to newly created buttons
+                cartItemsDiv.querySelectorAll('.remove-from-cart-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const itemId = e.currentTarget.dataset.itemId;
+                        const item = cart.find(i => i.id === itemId);
+                        removeFromCart(item);
+                    });
+                });
+                cartItemsDiv.querySelectorAll('.add-more-to-cart-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const itemId = e.currentTarget.dataset.itemId;
+                        const item = cart.find(i => i.id === itemId);
+                        addToCart(item);
+                    });
+                });
+            }
+            cartTotalSpan.innerText = calculateTotal().toLocaleString() + ' VNĐ';
+        }
+
+        async function placeOrder() {
+            if (cart.length === 0) {
+                showMessage("Đặt hàng thất bại", "Giỏ hàng của bạn đang trống.");
+                return;
+            }
+
+            try {
+                const orderData = {
+                    userId: currentUserId,
+                    restaurantId: selectedRestaurant.id,
+                    restaurantName: selectedRestaurant.name,
+                    items: cart.map(item => ({
+                        id: item.id,
+                        name: item.name,
+                        price: item.price,
+                        quantity: item.quantity
+                    })),
+                    total: calculateTotal(),
+                    status: "Đang chờ xác nhận",
+                    orderTime: new Date().toISOString()
+                };
+
+                await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/orders`), orderData);
+                cart = [];
+                selectedRestaurant = null;
+                showMessage("Đặt hàng thành công", "Đơn hàng của bạn đã được đặt thành công!");
+                renderFoodDeliveryPage(); // Go back to restaurant list or home
+            } catch (e) {
+                console.error("Lỗi khi đặt hàng:", e);
+                showMessage("Đặt hàng thất bại", "Có lỗi xảy ra khi đặt hàng. Vui lòng thử lại.");
+            }
+        }
+
+
+        function renderShipperServicePage() {
+            const appRoot = document.getElementById('app-root');
+            appRoot.innerHTML = `
+                <div class="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+                    <div class="flex justify-between items-center mb-6">
+                        <h1 class="text-3xl font-bold text-gray-800">Dịch vụ Giao Hàng</h1>
+                        <button id="back-to-home-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition duration-200">
+                            Quay lại
+                        </button>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto">
+                        <div class="mb-4">
+                            <label for="pickup" class="block text-gray-700 text-sm font-bold mb-2">
+                                Địa điểm lấy hàng:
+                            </label>
+                            <input type="text" id="pickup" class="input-field" placeholder="Nhập địa điểm lấy hàng">
+                        </div>
+                        <div class="mb-4">
+                            <label for="delivery" class="block text-gray-700 text-sm font-bold mb-2">
+                                Địa điểm giao hàng:
+                            </label>
+                            <input type="text" id="delivery" class="input-field" placeholder="Nhập địa điểm giao hàng">
+                        </div>
+                        <div class="mb-6">
+                            <label for="package" class="block text-gray-700 text-sm font-bold mb-2">
+                                Chi tiết gói hàng:
+                            </label>
+                            <textarea id="package" rows="3" class="input-field" placeholder="Mô tả gói hàng (ví dụ: tài liệu, quần áo, dễ vỡ)"></textarea>
+                        </div>
+                        <button id="request-shipper-btn" class="w-full py-3 bg-green-500 text-white rounded-md font-semibold hover:bg-green-600 transition duration-200">
+                            Yêu cầu Shipper
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('back-to-home-btn').addEventListener('click', () => renderHomePage());
+            document.getElementById('request-shipper-btn').addEventListener('click', requestShipper);
+        }
+
+        async function requestShipper() {
+            const pickupLocation = document.getElementById('pickup').value;
+            const deliveryLocation = document.getElementById('delivery').value;
+            const packageDetails = document.getElementById('package').value;
+
+            if (!pickupLocation || !deliveryLocation || !packageDetails) {
+                showMessage("Yêu cầu thất bại", "Vui lòng điền đầy đủ thông tin.");
+                return;
+            }
+
+            try {
+                const shipperRequestData = {
+                    userId: currentUserId,
+                    pickup: pickupLocation,
+                    delivery: deliveryLocation,
+                    package: packageDetails,
+                    status: "Đang tìm shipper",
+                    requestTime: new Date().toISOString()
+                };
+                await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/shipper_requests`), shipperRequestData);
+                showMessage("Yêu cầu thành công", "Yêu cầu giao hàng của bạn đã được gửi. Chúng tôi đang tìm shipper phù hợp.");
+                document.getElementById('pickup').value = '';
+                document.getElementById('delivery').value = '';
+                document.getElementById('package').value = '';
+            } catch (e) {
+                console.error("Lỗi khi yêu cầu shipper:", e);
+                showMessage("Yêu cầu thất bại", "Có lỗi xảy ra khi yêu cầu shipper. Vui lòng thử lại.");
+            }
+        }
+
+        function renderRideHailingPage() {
+            const appRoot = document.getElementById('app-root');
+            appRoot.innerHTML = `
+                <div class="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+                    <div class="flex justify-between items-center mb-6">
+                        <h1 class="text-3xl font-bold text-gray-800">Dịch vụ Gọi Xe</h1>
+                        <button id="back-to-home-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition duration-200">
+                            Quay lại
+                        </button>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto">
+                        <div class="mb-4">
+                            <label for="pickup-ride" class="block text-gray-700 text-sm font-bold mb-2">
+                                Địa điểm đón:
+                            </label>
+                            <input type="text" id="pickup-ride" class="input-field" placeholder="Nhập địa điểm đón">
+                        </div>
+                        <div class="mb-4">
+                            <label for="dropoff-ride" class="block text-gray-700 text-sm font-bold mb-2">
+                                Địa điểm trả:
+                                </label>
+                            <input type="text" id="dropoff-ride" class="input-field" placeholder="Nhập địa điểm trả">
+                        </div>
+                        <div class="mb-6">
+                            <label for="vehicle-type" class="block text-gray-700 text-sm font-bold mb-2">
+                                Loại xe:
+                            </label>
+                            <select id="vehicle-type" class="input-field">
+                                <option value="Xe máy">Xe máy</option>
+                                <option value="Ô tô 4 chỗ">Ô tô 4 chỗ</option>
+                                <option value="Ô tô 7 chỗ">Ô tô 7 chỗ</option>
+                            </select>
+                        </div>
+                        <button id="request-ride-btn" class="w-full py-3 bg-purple-500 text-white rounded-md font-semibold hover:bg-purple-600 transition duration-200">
+                            Yêu cầu Xe
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('back-to-home-btn').addEventListener('click', () => renderHomePage());
+            document.getElementById('request-ride-btn').addEventListener('click', requestRide);
+        }
+
+        async function requestRide() {
+            const pickupAddress = document.getElementById('pickup-ride').value;
+            const dropoffAddress = document.getElementById('dropoff-ride').value;
+            const vehicleType = document.getElementById('vehicle-type').value;
+
+            if (!pickupAddress || !dropoffAddress) {
+                showMessage("Yêu cầu thất bại", "Vui lòng điền đầy đủ địa điểm đón và trả.");
+                return;
+            }
+
+            try {
+                const rideRequestData = {
+                    userId: currentUserId,
+                    pickup: pickupAddress,
+                    dropoff: dropoffAddress,
+                    vehicle: vehicleType,
+                    status: "Đang tìm tài xế",
+                    requestTime: new Date().toISOString()
+                };
+                await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/ride_requests`), rideRequestData);
+                showMessage("Yêu cầu thành công", `Yêu cầu gọi ${vehicleType} của bạn đã được gửi. Chúng tôi đang tìm tài xế gần nhất.`);
+                document.getElementById('pickup-ride').value = '';
+                document.getElementById('dropoff-ride').value = '';
+            } catch (e) {
+                console.error("Lỗi khi yêu cầu xe:", e);
+                showMessage("Yêu cầu thất bại", "Có lỗi xảy ra khi yêu cầu xe. Vui lòng thử lại.");
+            }
+        }
+
+        // --- Initialization ---
+        window.onload = function() {
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    currentUser = user;
+                    currentUserId = user.uid;
+                } else {
+                    try {
+                        // Khi chạy cục bộ, chúng ta sẽ cố gắng đăng nhập ẩn danh.
+                        // Nếu bạn đang triển khai trên Firebase Hosting, __initial_auth_token sẽ được cung cấp.
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                        // onAuthStateChanged sẽ được gọi lại với người dùng đã đăng nhập (ẩn danh hoặc bằng token)
+                    } catch (error) {
+                        console.error("Lỗi đăng nhập Firebase:", error);
+                        // Fallback về một UUID ngẫu nhiên nếu cả đăng nhập ẩn danh cũng thất bại
+                        currentUserId = crypto.randomUUID();
+                    }
+                }
+                isAuthReady = true;
+                renderHomePage(); // Render trang chủ sau khi xác thực sẵn sàng
+            });
+        };
+    </script>
+</body>
+</html>
