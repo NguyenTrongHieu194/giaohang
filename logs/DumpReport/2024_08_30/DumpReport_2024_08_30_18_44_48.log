@@ -1,0 +1,6 @@
+20240830-184448<DEBUG:0000301C>: cmd	-b -a -f "C:\Users\TOSHIBA\Desktop\minidump\9d2d5a3c-bd3e-42ca-bc0b-ad5c068af495.xml" -r "C:\Users\TOSHIBA\Desktop\so2game.exe"
+20240830-184448<DEBUG:0000301C>: KGLOG_CHECK_ERROR(nRetCode) at line 119 in Product::LoadProduct
+20240830-184448<DEBUG:0000301C>: KGLOG_CHECK_ERROR(nRetCode) at line 122 in Product::LoadProduct
+20240830-184448<DEBUG:0000301C>: KGLOG_CHECK_ERROR(nRetCode) at line 103 in Collection::Init
+20240830-184448<DEBUG:0000301C>: KGLOG_CHECK_ERROR(nRetCode) at line 106 in Collection::Init
+20240830-184449<DEBUG:0000301C>: KGLOG_PROCESS_SUCCESS(!DumpReportConfig.IsSendDump()) at line 56 in WinMain
