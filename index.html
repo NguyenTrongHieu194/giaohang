@@ -60,6 +60,13 @@
         .modal-footer button {
             @apply px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50;
         }
+        /* Style for Google Map */
+        #map {
+            height: 400px; /* Chiều cao của bản đồ */
+            width: 100%; /* Chiều rộng của bản đồ */
+            border-radius: 0.75rem; /* rounded-xl */
+            margin-bottom: 1.5rem; /* mb-6 */
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -93,15 +100,15 @@
         // 4. Nếu chưa có ứng dụng web, nhấp vào biểu tượng "</>" (Web) để thêm ứng dụng web mới.
         // 5. Sao chép đối tượng `firebaseConfig` được cung cấp và dán vào đây.
         const appId = 'hieu-nguyen-cf05b'; // Thay thế bằng ID dự án Firebase của bạn (ví dụ: my-delivery-app-12345)
-    const firebaseConfig = {
-  apiKey: "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI",
-  authDomain: "hieu-nguyen-cf05b.firebaseapp.com",
-  projectId: "hieu-nguyen-cf05b",
-  storageBucket: "hieu-nguyen-cf05b.firebasestorage.app",
-  messagingSenderId: "43504362983",
-  appId: "1:43504362983:web:887ba856c9189f2a4e4942",
-  measurementId: "G-R6PNSC5QX5"
-};
+        const firebaseConfig = {
+            apiKey: "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI",
+            authDomain: "hieu-nguyen-cf05b.firebaseapp.com",
+            projectId: "hieu-nguyen-cf05b",
+            storageBucket: "hieu-nguyen-cf05b.firebasestorage.app",
+            messagingSenderId: "43504362983",
+            appId: "1:43504362983:web:887ba856c9189f2a4e4942",
+            measurementId: "G-R6PNSC5QX5"
+        };
         const initialAuthToken = null; // Không cần thiết khi chạy cục bộ, đăng nhập ẩn danh sẽ được sử dụng
 
         // Initialize Firebase
@@ -138,8 +145,8 @@
             // 2. Tạo một dự án mới (nếu chưa có).
             // 3. Kích hoạt Gemini API (hoặc Generative Language API).
             // 4. Tạo một API key.
-            const apiKey = "AIzaSyADQc9AB6umXk6TY8-UyB1QMbonbLTM99Y"; // Thay thế bằng API key thực của bạn
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const geminiApiKey = "AIzaSyADQc9AB6umXk6TY8-UyB1QMbonbLTM99Y"; // Thay thế bằng API key thực của bạn
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
 
             try {
                 const response = await fetch(apiUrl, {
@@ -186,6 +193,9 @@
                             <span class="text-xl">Gọi Xe</span>
                         </button>
                     </div>
+                    <button id="order-history-btn" class="mt-8 px-8 py-4 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800 transition duration-300 ease-in-out transform hover:-translate-y-1">
+                        Lịch Sử Đơn Hàng/Yêu Cầu
+                    </button>
                     <p class="mt-10 text-sm text-gray-500">
                         ID người dùng của bạn: <span class="font-mono text-gray-700 break-all">${currentUserId}</span>
                     </p>
@@ -195,11 +205,13 @@
             document.getElementById('food-delivery-btn').addEventListener('click', () => renderFoodDeliveryPage());
             document.getElementById('shipper-service-btn').addEventListener('click', () => renderShipperServicePage());
             document.getElementById('ride-hailing-btn').addEventListener('click', () => renderRideHailingPage());
+            document.getElementById('order-history-btn').addEventListener('click', () => renderOrderHistoryPage());
         }
 
         let restaurants = [];
         let selectedRestaurant = null;
         let cart = [];
+        let currentSearchQuery = ''; // Biến để lưu trữ truy vấn tìm kiếm hiện tại
 
         async function addDummyRestaurants() {
             const dummyData = [
@@ -213,13 +225,18 @@
                 ]},
                 { name: "Cơm Tấm Sài Gòn", address: "789 Đường Trần Hưng Đạo", menu: [
                     { id: "com-tam-suon", name: "Cơm Tấm Sườn", price: 55000, description: "Cơm tấm sườn nướng đậm đà, bì chả trứng." },
-                    { id: "com-tam-bi", name: 45000, description: "Cơm tấm bì chả, thơm ngon." }
+                    { id: "com-tam-bi", name: "Cơm Tấm Bì", price: 45000, description: "Cơm tấm bì chả, thơm ngon." } // Fixed missing name for com-tam-bi
                 ]}
             ];
 
             for (const data of dummyData) {
                 try {
-                    await addDoc(collection(db, `artifacts/${appId}/public/data/restaurants`), data);
+                    // Kiểm tra xem nhà hàng đã tồn tại chưa trước khi thêm
+                    const q = query(collection(db, `artifacts/${appId}/public/data/restaurants`), where("name", "==", data.name));
+                    const querySnapshot = await getDocs(q);
+                    if (querySnapshot.empty) {
+                        await addDoc(collection(db, `artifacts/${appId}/public/data/restaurants`), data);
+                    }
                 } catch (e) {
                     console.error("Lỗi khi thêm nhà hàng mẫu:", e);
                 }
@@ -236,13 +253,22 @@
                             Quay lại
                         </button>
                     </div>
+                    <div id="food-search-container" class="mb-6">
+                        <input type="text" id="restaurant-search" class="input-field" placeholder="Tìm kiếm nhà hàng..." value="${currentSearchQuery}">
+                    </div>
                     <div id="food-content"></div>
                 </div>
             `;
             document.getElementById('back-to-home-btn').addEventListener('click', () => {
                 selectedRestaurant = null; // Reset selected restaurant
                 cart = []; // Clear cart
+                currentSearchQuery = ''; // Clear search query
                 renderHomePage();
+            });
+
+            document.getElementById('restaurant-search').addEventListener('input', (e) => {
+                currentSearchQuery = e.target.value;
+                displayFoodContent(); // Re-render content with filtered results
             });
 
             loadRestaurants();
@@ -270,20 +296,33 @@
 
         function displayFoodContent() {
             const foodContentDiv = document.getElementById('food-content');
+            if (!foodContentDiv) return;
+
             if (!selectedRestaurant) {
-                foodContentDiv.innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        ${restaurants.map(restaurant => `
-                            <div class="bg-white rounded-xl shadow-md p-6 cursor-pointer hover:shadow-lg transition duration-300 transform hover:-translate-y-1" data-restaurant-id="${restaurant.id}">
-                                <h2 class="text-xl font-semibold text-gray-800 mb-2">${restaurant.name}</h2>
-                                <p class="text-gray-600 text-sm">${restaurant.address}</p>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
+                const filteredRestaurants = restaurants.filter(restaurant =>
+                    restaurant.name.toLowerCase().includes(currentSearchQuery.toLowerCase())
+                );
+
+                if (filteredRestaurants.length === 0 && currentSearchQuery !== '') {
+                    foodContentDiv.innerHTML = `<p class="text-gray-600 text-center mt-8">Không tìm thấy nhà hàng nào phù hợp với tìm kiếm của bạn.</p>`;
+                } else if (filteredRestaurants.length === 0 && currentSearchQuery === '') {
+                     foodContentDiv.innerHTML = `<p class="text-gray-600 text-center mt-8">Đang tải nhà hàng hoặc chưa có dữ liệu mẫu.</p>`;
+                } else {
+                    foodContentDiv.innerHTML = `
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            ${filteredRestaurants.map(restaurant => `
+                                <div class="bg-white rounded-xl shadow-md p-6 cursor-pointer hover:shadow-lg transition duration-300 transform hover:-translate-y-1" data-restaurant-id="${restaurant.id}">
+                                    <h2 class="text-xl font-semibold text-gray-800 mb-2">${restaurant.name}</h2>
+                                    <p class="text-gray-600 text-sm">${restaurant.address}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
                 document.querySelectorAll('[data-restaurant-id]').forEach(btn => {
                     btn.addEventListener('click', (e) => {
-                        const id = e.currentTarget.dataset.itemId; // Changed from restaurantId to itemId for consistency, but should be restaurantId here
+                        const id = e.currentTarget.dataset.restaurantId;
                         selectedRestaurant = restaurants.find(r => r.id === id);
                         displayFoodContent(); // Re-render to show menu
                     });
@@ -485,7 +524,8 @@
                         quantity: item.quantity
                     })),
                     total: calculateTotal(),
-                    status: "Đang chờ xác nhận",
+                    status: "Đang chờ xác nhận", // Trạng thái ban đầu
+                    type: "food_order",
                     orderTime: new Date().toISOString()
                 };
 
@@ -513,6 +553,7 @@
                     </div>
 
                     <div class="bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto">
+                        <div id="map" class="mb-6"></div> <!-- Map container -->
                         <div class="mb-4">
                             <label for="pickup" class="block text-gray-700 text-sm font-bold mb-2">
                                 Địa điểm lấy hàng:
@@ -539,6 +580,7 @@
             `;
             document.getElementById('back-to-home-btn').addEventListener('click', () => renderHomePage());
             document.getElementById('request-shipper-btn').addEventListener('click', requestShipper);
+            initMap('map', { lat: 10.762622, lng: 106.660172 }); // Default map location for HCMC
         }
 
         async function requestShipper() {
@@ -557,7 +599,8 @@
                     pickup: pickupLocation,
                     delivery: deliveryLocation,
                     package: packageDetails,
-                    status: "Đang tìm shipper",
+                    status: "Đang tìm shipper", // Trạng thái ban đầu
+                    type: "shipper_request",
                     requestTime: new Date().toISOString()
                 };
                 await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/shipper_requests`), shipperRequestData);
@@ -583,6 +626,7 @@
                     </div>
 
                     <div class="bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto">
+                        <div id="map" class="mb-6"></div> <!-- Map container -->
                         <div class="mb-4">
                             <label for="pickup-ride" class="block text-gray-700 text-sm font-bold mb-2">
                                 Địa điểm đón:
@@ -613,6 +657,7 @@
             `;
             document.getElementById('back-to-home-btn').addEventListener('click', () => renderHomePage());
             document.getElementById('request-ride-btn').addEventListener('click', requestRide);
+            initMap('map', { lat: 10.762622, lng: 106.660172 }); // Default map location for HCMC
         }
 
         async function requestRide() {
@@ -631,7 +676,8 @@
                     pickup: pickupAddress,
                     dropoff: dropoffAddress,
                     vehicle: vehicleType,
-                    status: "Đang tìm tài xế",
+                    status: "Đang tìm tài xế", // Trạng thái ban đầu
+                    type: "ride_request",
                     requestTime: new Date().toISOString()
                 };
                 await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/ride_requests`), rideRequestData);
@@ -642,6 +688,214 @@
                 console.error("Lỗi khi yêu cầu xe:", e);
                 showMessage("Yêu cầu thất bại", "Có lỗi xảy ra khi yêu cầu xe. Vui lòng thử lại.");
             }
+        }
+
+        // --- Order History Page ---
+        async function renderOrderHistoryPage() {
+            const appRoot = document.getElementById('app-root');
+            appRoot.innerHTML = `
+                <div class="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+                    <div class="flex justify-between items-center mb-6">
+                        <h1 class="text-3xl font-bold text-gray-800">Lịch Sử Đơn Hàng & Yêu Cầu</h1>
+                        <button id="back-to-home-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition duration-200">
+                            Quay lại
+                        </button>
+                    </div>
+                    <div id="order-history-list" class="space-y-4">
+                        <p class="text-gray-600 text-center">Đang tải lịch sử...</p>
+                    </div>
+                </div>
+            `;
+            document.getElementById('back-to-home-btn').addEventListener('click', () => renderHomePage());
+
+            if (!isAuthReady || !currentUserId) {
+                showMessage("Lỗi", "Không thể tải lịch sử đơn hàng. Vui lòng thử lại sau.");
+                return;
+            }
+
+            // Fetch all types of requests for the current user
+            const ordersRef = collection(db, `artifacts/${appId}/users/${currentUserId}/orders`);
+            const shipperRequestsRef = collection(db, `artifacts/${appId}/users/${currentUserId}/shipper_requests`);
+            const rideRequestsRef = collection(db, `artifacts/${appId}/users/${currentUserId}/ride_requests`);
+
+            try {
+                const [ordersSnapshot, shipperSnapshot, rideSnapshot] = await Promise.all([
+                    getDocs(ordersRef),
+                    getDocs(shipperRequestsRef),
+                    getDocs(rideRequestsRef)
+                ]);
+
+                let allRequests = [];
+                ordersSnapshot.forEach(doc => allRequests.push({ id: doc.id, ...doc.data(), collection: 'orders' }));
+                shipperSnapshot.forEach(doc => allRequests.push({ id: doc.id, ...doc.data(), collection: 'shipper_requests' }));
+                rideSnapshot.forEach(doc => allRequests.push({ id: doc.id, ...doc.data(), collection: 'ride_requests' }));
+
+                // Sort by requestTime (newest first)
+                allRequests.sort((a, b) => new Date(b.requestTime || b.orderTime) - new Date(a.requestTime || a.orderTime));
+
+                displayOrderHistory(allRequests);
+
+            } catch (error) {
+                console.error("Lỗi khi tải lịch sử đơn hàng:", error);
+                showMessage("Lỗi", "Không thể tải lịch sử đơn hàng của bạn.");
+                document.getElementById('order-history-list').innerHTML = `<p class="text-red-500 text-center">Lỗi khi tải lịch sử đơn hàng.</p>`;
+            }
+        }
+
+        function displayOrderHistory(requests) {
+            const historyListDiv = document.getElementById('order-history-list');
+            if (!historyListDiv) return;
+
+            if (requests.length === 0) {
+                historyListDiv.innerHTML = `<p class="text-gray-600 text-center">Bạn chưa có đơn hàng hoặc yêu cầu nào.</p>`;
+                return;
+            }
+
+            historyListDiv.innerHTML = requests.map(req => {
+                const date = new Date(req.requestTime || req.orderTime).toLocaleString('vi-VN');
+                let details = '';
+                let actionButtons = '';
+                let statusColor = 'text-gray-600';
+
+                if (req.type === 'food_order') {
+                    details = `Nhà hàng: ${req.restaurantName}<br>Tổng tiền: ${req.total.toLocaleString()} VNĐ`;
+                } else if (req.type === 'shipper_request') {
+                    details = `Lấy hàng: ${req.pickup}<br>Giao hàng: ${req.delivery}<br>Gói hàng: ${req.package}`;
+                } else if (req.type === 'ride_request') {
+                    details = `Đón: ${req.pickup}<br>Trả: ${req.dropoff}<br>Xe: ${req.vehicle}`;
+                }
+
+                if (req.status === "Đang chờ xác nhận" || req.status === "Đang tìm shipper" || req.status === "Đang tìm tài xế") {
+                    actionButtons = `<button class="cancel-request-btn px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition duration-200" data-id="${req.id}" data-collection="${req.collection}">Hủy</button>`;
+                    statusColor = 'text-yellow-600';
+                } else if (req.status === "Đã hoàn thành") {
+                    statusColor = 'text-green-600';
+                    actionButtons = `<button class="review-btn px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition duration-200" data-id="${req.id}" data-type="${req.type}">Đánh giá</button>`;
+                } else if (req.status === "Đã hủy") {
+                    statusColor = 'text-red-600';
+                }
+
+
+                return `
+                    <div class="bg-white rounded-xl shadow-md p-4 flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold text-gray-800">${req.type === 'food_order' ? 'Đơn hàng đồ ăn' : (req.type === 'shipper_request' ? 'Yêu cầu giao hàng' : 'Yêu cầu gọi xe')}</p>
+                            <p class="text-sm text-gray-600">${details}</p>
+                            <p class="text-xs text-gray-500 mt-1">Thời gian: ${date}</p>
+                            <p class="font-medium ${statusColor} mt-2">Trạng thái: ${req.status}</p>
+                        </div>
+                        <div class="flex-shrink-0">
+                            ${actionButtons}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Attach event listeners for cancel buttons
+            historyListDiv.querySelectorAll('.cancel-request-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const docId = e.target.dataset.id;
+                    const collectionName = e.target.dataset.collection;
+                    const confirmCancel = await showConfirmModal("Xác nhận hủy", "Bạn có chắc chắn muốn hủy yêu cầu này?");
+                    if (confirmCancel) {
+                        await cancelRequest(docId, collectionName);
+                    }
+                });
+            });
+
+            // Attach event listeners for review buttons (simplified for now)
+            historyListDiv.querySelectorAll('.review-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const docId = e.target.dataset.id;
+                    const type = e.target.dataset.type;
+                    showMessage("Đánh giá", `Chức năng đánh giá cho ${type} ID: ${docId} sẽ được triển khai tại đây.`);
+                    // Here you would typically open a modal with a rating form
+                    // and then call a function like addReview(docId, type, rating, comment);
+                });
+            });
+        }
+
+        async function cancelRequest(docId, collectionName) {
+            try {
+                const docRef = doc(db, `artifacts/${appId}/users/${currentUserId}/${collectionName}`, docId);
+                await updateDoc(docRef, { status: "Đã hủy" });
+                showMessage("Thành công", "Yêu cầu đã được hủy.");
+                // onSnapshot in renderOrderHistoryPage will automatically update the UI
+            } catch (e) {
+                console.error("Lỗi khi hủy yêu cầu:", e);
+                showMessage("Lỗi", "Không thể hủy yêu cầu. Vui lòng thử lại.");
+            }
+        }
+
+        // Custom confirm modal (similar to showMessage but with confirm/cancel)
+        function showConfirmModal(title, message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('custom-modal');
+                const modalTitle = document.getElementById('modal-title');
+                const modalMessage = document.getElementById('modal-message');
+                const modalFooter = modal.querySelector('.modal-footer');
+
+                modalTitle.innerText = title;
+                modalMessage.innerText = message;
+                modalFooter.innerHTML = `
+                    <button id="modal-confirm-btn" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 mr-2">Xác nhận</button>
+                    <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50">Hủy</button>
+                `;
+                modal.classList.remove('hidden');
+
+                document.getElementById('modal-confirm-btn').onclick = () => {
+                    modal.classList.add('hidden');
+                    resolve(true);
+                };
+                document.getElementById('modal-cancel-btn').onclick = () => {
+                    modal.classList.add('hidden');
+                    resolve(false);
+                };
+            });
+        }
+
+        // --- Google Maps Integration (Basic) ---
+        let map;
+        let mapMarker;
+        let googleMapsApiKey = "YOUR_GOOGLE_MAPS_API_KEY_HERE"; // Thay thế bằng API key Google Maps của bạn
+
+        // Load Google Maps API script dynamically
+        function loadGoogleMapsScript(callback) {
+            if (window.google && window.google.maps) {
+                callback();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&callback=initMapCallback`;
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+            window.initMapCallback = callback;
+        }
+
+        function initMap(mapElementId, centerLocation) {
+            loadGoogleMapsScript(() => {
+                const mapDiv = document.getElementById(mapElementId);
+                if (!mapDiv) {
+                    console.error(`Map element with ID '${mapElementId}' not found.`);
+                    return;
+                }
+                map = new google.maps.Map(mapDiv, {
+                    center: centerLocation,
+                    zoom: 15,
+                });
+                mapMarker = new google.maps.Marker({
+                    position: centerLocation,
+                    map: map,
+                    title: 'Vị trí của bạn'
+                });
+                // Thêm một sự kiện lắng nghe để cập nhật vị trí marker khi bản đồ được nhấp
+                map.addListener('click', (e) => {
+                    mapMarker.setPosition(e.latLng);
+                    console.log('Vị trí mới:', e.latLng.lat(), e.latLng.lng());
+                    // Trong ứng dụng thực tế, bạn sẽ cập nhật trường input địa điểm ở đây
+                });
+            });
         }
 
         // --- Initialization ---
