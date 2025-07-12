@@ -1,4 +1,4 @@
-c<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
@@ -901,27 +901,38 @@ c<!DOCTYPE html>
         // --- Initialization ---
         window.onload = function() {
             onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    currentUser = user;
-                    currentUserId = user.uid;
-                } else {
-                    try {
-                        // Khi chạy cục bộ, chúng ta sẽ cố gắng đăng nhập ẩn danh.
-                        // Nếu bạn đang triển khai trên Firebase Hosting, __initial_auth_token sẽ được cung cấp.
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(auth);
+                if (!isAuthReady) { // Only run this block once for initial setup
+                    if (user) {
+                        currentUser = user;
+                        currentUserId = user.uid;
+                    } else {
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                const anonymousUserCredential = await signInAnonymously(auth);
+                                currentUser = anonymousUserCredential.user;
+                                currentUserId = anonymousUserCredential.user.uid;
+                            }
+                        } catch (error) {
+                            console.error("Lỗi đăng nhập Firebase:", error);
+                            // Fallback to a random UUID if anonymous sign-in fails
+                            currentUserId = crypto.randomUUID();
                         }
-                        // onAuthStateChanged sẽ được gọi lại với người dùng đã đăng nhập (ẩn danh hoặc bằng token)
-                    } catch (error) {
-                        console.error("Lỗi đăng nhập Firebase:", error);
-                        // Fallback về một UUID ngẫu nhiên nếu cả đăng nhập ẩn danh cũng thất bại
-                        currentUserId = crypto.randomUUID();
                     }
+                    isAuthReady = true;
+                    renderHomePage(); // Render page only after auth state is determined and currentUserId is set
+                } else {
+                    // If auth state changes after initial load (e.g., user logs out/in), re-render home page
+                    if (user) {
+                        currentUser = user;
+                        currentUserId = user.uid;
+                    } else {
+                        // If user logs out, currentUserId might become null, handle gracefully
+                        currentUserId = crypto.randomUUID(); // Assign a new anonymous ID or handle logout state
+                    }
+                    renderHomePage(); // Re-render if auth state changes
                 }
-                isAuthReady = true;
-                renderHomePage(); // Render trang chủ sau khi xác thực sẵn sàng
             });
         };
     </script>
