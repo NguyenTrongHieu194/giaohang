@@ -17,15 +17,21 @@ const db = admin.firestore();
 exports.acceptRequest = functions.https.onCall(async (data, context) => {
     // --- START DEBUGGING LOGS ---
     console.log("Cloud Function received data:", data);
-    console.log("Cloud Function context.auth:", context.auth);
-    console.log("Cloud Function app.id from config:", functions.config().app.id);
+    // Log the entire context object to inspect its structure
+    // We stringify it to ensure all properties are visible in logs, even nested ones.
+    console.log("Full context object:", JSON.stringify(context, null, 2)); 
+    console.log("Cloud Function GCLOUD_PROJECT env var:", process.env.GCLOUD_PROJECT);
     // --- END DEBUGGING LOGS ---
 
-    // 1. Check authentication
-    if (!context.auth) {
+    // 1. Check authentication more robustly
+    // context.auth should contain the user's authentication information.
+    // If it's missing or doesn't have uid/token, the user is not properly authenticated
+    // for this callable function.
+    if (!context.auth || !context.auth.uid || !context.auth.token) {
+        console.error("Authentication context or token missing for callable function. context.auth:", context.auth);
         throw new functions.https.HttpsError(
             'unauthenticated',
-            'Người dùng chưa được xác thực.'
+            'Người dùng chưa được xác thực hoặc token không hợp lệ.'
         );
     }
 
@@ -37,7 +43,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
 
     if (!userId || !collectionName || !requestId || !type) {
         // Log detailed missing info for debugging
-        console.error("Missing information:", { userId, collectionName, requestId, type });
+        console.error("Missing information in request data:", { userId, collectionName, requestId, type });
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Thiếu thông tin yêu cầu (userId, collectionName, requestId, type).'
@@ -70,13 +76,13 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
         );
     }
 
-    // Construct the document reference path
-    const app_id = functions.config().app.id;
+    // Construct the document reference path using process.env.GCLOUD_PROJECT
+    const app_id = process.env.GCLOUD_PROJECT;
     if (!app_id) {
-        console.error("Firebase app ID is not configured in Cloud Functions runtime config.");
+        console.error("GCLOUD_PROJECT environment variable is not set. Cannot determine Firebase project ID.");
         throw new functions.https.HttpsError(
             'internal',
-            'Cấu hình ứng dụng Firebase bị thiếu.'
+            'Cấu hình dự án Firebase bị thiếu.'
         );
     }
     const requestRef = db.doc(`artifacts/${app_id}/users/${userId}/${collectionName}/${requestId}`);

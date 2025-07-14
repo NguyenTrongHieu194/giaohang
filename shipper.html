@@ -146,7 +146,8 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const functions = getFunctions(app, "us-central1"); // Initialize Cloud Functions, specify region
+        // Initialize Cloud Functions, specify region
+        const functions = getFunctions(app, "us-central1"); 
 
         let currentShipperUser = null;
         let currentShipperUserId = null;
@@ -182,6 +183,7 @@
                 currentShipperUser = user;
                 currentShipperUserId = user.uid;
                 // Force refresh token to get the latest custom claims (important after assigning roles)
+                // This is crucial for the Cloud Function to receive the up-to-date claims.
                 const idTokenResult = await user.getIdTokenResult(true);
                 currentShipperRole = idTokenResult.claims.role; // Get the assigned role
 
@@ -500,15 +502,19 @@
                 // Get a reference to the callable function
                 const callAcceptRequest = httpsCallable(functions, 'acceptRequest');
 
-                // Log the data being sent to the Cloud Function for debugging
-                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type });
+                // Get the ID token of the current authenticated user
+                const idToken = await auth.currentUser.getIdToken();
 
-                // Call the function with the data
+                // Log the data being sent to the Cloud Function for debugging
+                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type, idToken });
+
+                // Call the function with the data, including the ID token
                 const result = await callAcceptRequest({
                     userId: userId,
                     collectionName: collectionName,
                     requestId: requestId,
-                    type: type
+                    type: type,
+                    idToken: idToken // Pass the ID token explicitly
                 });
 
                 // The result.data contains the response from the Cloud Function
