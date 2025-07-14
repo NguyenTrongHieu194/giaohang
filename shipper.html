@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ứng Dụng Shipper/Tài xế</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* Base styles for Inter font and light gray background */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+        }
+        /* Common input field styling */
+        .input-field {
+            @apply shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500;
+        }
+        /* Primary button styling */
+        .btn-primary {
+            @apply px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1;
+        }
+        /* Card styling for sections */
+        .card {
+            @apply bg-white rounded-xl shadow-lg p-6;
+        }
+        /* Status badge styling for different order/request states */
+        .status-badge {
+            @apply px-3 py-1 rounded-full text-xs font-semibold;
+        }
+        /* Specific colors for different statuses */
+        .status-pending { @apply bg-yellow-100 text-yellow-800; }
+        .status-processing { @apply bg-blue-100 text-blue-800; }
+        .status-assigned { @apply bg-indigo-100 text-indigo-800; }
+        .status-delivering { @apply bg-purple-100 text-purple-800; }
+        .status-completed { @apply bg-green-100 text-green-800; }
+        .status-cancelled { @apply bg-red-100 text-red-800; }
+
+        /* Custom modal styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-header {
+            @apply text-xl font-semibold text-gray-800 mb-4;
+        }
+        .modal-body {
+            @apply text-gray-700 mb-6;
+        }
+        .modal-footer button {
+            @apply px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div id="shipper-app-root" class="w-full max-w-4xl p-4">
+        <!-- Login Section: Displayed when no shipper/driver is logged in -->
+        <div id="login-section" class="card mx-auto max-w-md text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-6">Đăng nhập Shipper/Tài xế</h1>
+            <input type="email" id="shipper-email" class="input-field mb-4" placeholder="Email của bạn">
+            <input type="password" id="shipper-password" class="input-field mb-6" placeholder="Mật khẩu">
+            <button id="login-btn" class="btn-primary w-full">Đăng nhập</button>
+            <p id="login-error" class="text-red-500 mt-4 hidden"></p>
+        </div>
+
+        <!-- Shipper Dashboard Section: Displayed when a shipper/driver is logged in -->
+        <div id="dashboard-section" class="hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-3xl font-bold text-gray-800">Bảng điều khiển Shipper/Tài xế</h1>
+                <button id="logout-btn" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition duration-200">
+                    Đăng xuất
+                </button>
+            </div>
+
+            <!-- Available Requests Section -->
+            <div class="card mb-6">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Yêu cầu có sẵn</h2>
+                <div id="available-requests-list" class="space-y-4">
+                    <p class="text-gray-600 text-center">Đang tìm yêu cầu...</p>
+                </div>
+            </div>
+
+            <!-- My Active Request Section -->
+            <div class="card">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Yêu cầu của tôi</h2>
+                <div id="my-active-request" class="space-y-4">
+                    <p class="text-gray-600 text-center">Bạn chưa có yêu cầu nào đang hoạt động.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Modal HTML: Used for displaying messages to the user -->
+    <div id="custom-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 id="modal-title" class="modal-header"></h2>
+            <p id="modal-message" class="modal-body"></p>
+            <div class="modal-footer">
+                <button id="modal-close-btn">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs: Required for Firebase Authentication and Firestore -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collectionGroup, query, onSnapshot, doc, updateDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration: MUST BE THE SAME AS YOUR MAIN APP'S CONFIG
+        // Replace 'hieu-nguyen-cf05b' with your actual Firebase Project ID
+        const appId = 'hieu-nguyen-cf05b'; // Replace with your Firebase Project ID
+        const firebaseConfig = {
+            apiKey: "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI",
+            authDomain: "hieu-nguyen-cf05b.firebaseapp.com",
+            projectId: "hieu-nguyen-cf05b",
+            storageBucket: "hieu-nguyen-cf05b.firebasestorage.app",
+            messagingSenderId: "43504362983",
+            appId: "1:43504362983:web:887ba856c9189f2a4e4942",
+            measurementId: "G-R6PNSC5QX5"
+        };
+
+        // Initialize Firebase services
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let currentShipperUser = null;
+        let currentShipperUserId = null;
+        let currentShipperRole = null; // Stores the custom claim role: 'shipper' or 'driver'
+        let activeRequest = null; // Stores the request currently being handled by this shipper/driver
+
+        // Get references to UI elements
+        const loginSection = document.getElementById('login-section');
+        const dashboardSection = document.getElementById('dashboard-section');
+        const shipperEmailInput = document.getElementById('shipper-email');
+        const shipperPasswordInput = document.getElementById('shipper-password');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const loginError = document.getElementById('login-error');
+        const availableRequestsListDiv = document.getElementById('available-requests-list');
+        const myActiveRequestDiv = document.getElementById('my-active-request');
+
+        // --- Utility Functions (Modal for messages) ---
+        function showMessage(title, message) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = message;
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+        // Event listener to close the modal
+        document.getElementById('modal-close-btn').addEventListener('click', () => {
+            document.getElementById('custom-modal').classList.add('hidden');
+        });
+
+        // --- Authentication Logic ---
+        // Listener for Firebase Auth state changes
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentShipperUser = user;
+                currentShipperUserId = user.uid;
+                // Force refresh token to get the latest custom claims (important after assigning roles)
+                const idTokenResult = await user.getIdTokenResult(true);
+                currentShipperRole = idTokenResult.claims.role; // Get the assigned role
+
+                // Check if the user has a valid 'shipper' or 'driver' role
+                if (currentShipperRole === 'shipper' || currentShipperRole === 'driver') {
+                    loginSection.classList.add('hidden'); // Hide login form
+                    dashboardSection.classList.remove('hidden'); // Show dashboard
+                    loadRequests(); // Load relevant requests for this shipper/driver
+                } else {
+                    // User is signed in but does NOT have the required role
+                    showMessage("Truy cập bị từ chối", "Bạn không có quyền Shipper/Tài xế. Vui lòng đăng nhập bằng tài khoản có vai trò phù hợp.");
+                    await signOut(auth); // Log them out immediately for security
+                    loginSection.classList.remove('hidden'); // Show login form again
+                    dashboardSection.classList.add('hidden'); // Hide dashboard
+                }
+            } else {
+                // No user is signed in. Display the login form and reset state.
+                loginSection.classList.remove('hidden');
+                dashboardSection.classList.add('hidden');
+                currentShipperUser = null;
+                currentShipperUserId = null;
+                currentShipperRole = null;
+                activeRequest = null; // Clear any active request data
+            }
+        });
+
+        // Event listener for shipper/driver login button
+        loginBtn.addEventListener('click', async () => {
+            const email = shipperEmailInput.value;
+            const password = shipperPasswordInput.value;
+            loginError.classList.add('hidden'); // Hide any previous error messages
+
+            if (!email || !password) {
+                loginError.innerText = "Vui lòng nhập email và mật khẩu.";
+                loginError.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                // Attempt to sign in with provided email and password
+                await signInWithEmailAndPassword(auth, email, password);
+                // If successful, the onAuthStateChanged listener above will handle the UI update
+            } catch (error) {
+                console.error("Lỗi đăng nhập:", error);
+                let errorMessage = "Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.";
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    errorMessage = "Email hoặc mật khẩu không đúng.";
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = "Email không hợp lệ.";
+                }
+                loginError.innerText = errorMessage;
+                loginError.classList.remove('hidden');
+            }
+        });
+
+        // Event listener for logout button
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await signOut(auth); // Sign out the current user
+                showMessage("Đăng xuất", "Bạn đã đăng xuất thành công.");
+                // The onAuthStateChanged listener will detect the logout and update the UI
+            } catch (error) {
+                console.error("Lỗi đăng xuất:", error);
+                showMessage("Lỗi", "Không thể đăng xuất.");
+            }
+        });
+
+        // --- Data Loading and Display ---
+        // Function to load requests relevant to the current shipper/driver
+        function loadRequests() {
+            if (!currentShipperUserId || !currentShipperRole) {
+                // Do not load requests if user is not authenticated or role is not set
+                return;
+            }
+
+            // Listen for available requests (status: "Đang tìm shipper/tài xế")
+            // and requests already assigned to this shipper/driver.
+
+            // Orders (food_order) - relevant for 'shipper' role
+            if (currentShipperRole === 'shipper') {
+                const ordersQuery = query(
+                    collectionGroup(db, 'orders'),
+                    where('type', '==', 'food_order') // Filter by type
+                    // Firestore rules will handle permissions based on status and assignedShipperId
+                );
+                onSnapshot(ordersQuery, (snapshot) => {
+                    const orders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                    updateRequestsDisplay(orders, 'orders');
+                }, (error) => {
+                    console.error("Lỗi khi tải đơn hàng:", error);
+                    availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng: ${error.message}</p>`;
+                });
+
+                // Shipper Requests (shipper_request) - relevant for 'shipper' role
+                const shipperRequestsQuery = query(
+                    collectionGroup(db, 'shipper_requests'),
+                    where('type', '==', 'shipper_request') // Filter by type
+                    // Firestore rules will handle permissions based on status and assignedShipperId
+                );
+                onSnapshot(shipperRequestsQuery, (snapshot) => {
+                    const shipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                    updateRequestsDisplay(shipperRequests, 'shipper_requests');
+                }, (error) => {
+                    console.error("Lỗi khi tải yêu cầu giao hàng:", error);
+                    availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu giao hàng: ${error.message}</p>`;
+                });
+            }
+
+
+            // Ride Requests (ride_request) - relevant for 'driver' role
+            if (currentShipperRole === 'driver') {
+                const rideRequestsQuery = query(
+                    collectionGroup(db, 'ride_requests'),
+                    where('type', '==', 'ride_request') // Filter by type
+                    // Firestore rules will handle permissions based on status and assignedDriverId
+                );
+                onSnapshot(rideRequestsQuery, (snapshot) => {
+                    const rideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                    updateRequestsDisplay(rideRequests, 'ride_requests');
+                }, (error) => {
+                    console.error("Lỗi khi tải yêu cầu gọi xe:", error);
+                    availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe: ${error.message}</p>`;
+                });
+            }
+        }
+
+        let allAvailableRequests = []; // Stores all requests the current user has read access to
+
+        // Function to update the combined list of requests and trigger rendering
+        function updateRequestsDisplay(newItems, collectionType) {
+            // Remove old items of this collection type to avoid duplicates
+            allAvailableRequests = allAvailableRequests.filter(item => item.collectionRef.parent.id !== collectionType);
+            // Add the new items
+            allAvailableRequests = [...allAvailableRequests, ...newItems];
+
+            // Separate requests into 'active' (assigned to me) and 'available' (waiting for assignment)
+            activeRequest = allAvailableRequests.find(req =>
+                (req.type === 'food_order' && req.assignedShipperId === currentShipperUserId && req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy') ||
+                (req.type === 'shipper_request' && req.assignedShipperId === currentShipperUserId && req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy') ||
+                (req.type === 'ride_request' && req.assignedDriverId === currentShipperUserId && req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy')
+            );
+
+            const availableForMe = allAvailableRequests.filter(req =>
+                !activeRequest && // Only show available if no active request
+                (
+                    (req.type === 'food_order' && req.status === 'Đang tìm shipper' && currentShipperRole === 'shipper') ||
+                    (req.type === 'shipper_request' && req.status === 'Đang tìm shipper' && currentShipperRole === 'shipper') ||
+                    (req.type === 'ride_request' && req.status === 'Đang tìm tài xế' && currentShipperRole === 'driver')
+                )
+            );
+
+            // Sort available requests by time (newest first)
+            availableForMe.sort((a, b) => {
+                const timeA = new Date(a.requestTime || a.orderTime || 0);
+                const timeB = new Date(b.requestTime || b.orderTime || 0);
+                return timeB - timeA;
+            });
+
+            renderAvailableRequests(availableForMe);
+            renderMyActiveRequest(activeRequest);
+        }
+
+        // Function to render the list of available requests
+        function renderAvailableRequests(requests) {
+            if (requests.length === 0) {
+                availableRequestsListDiv.innerHTML = `<p class="text-gray-600 text-center">Không có yêu cầu mới nào.</p>`;
+                return;
+            }
+
+            availableRequestsListDiv.innerHTML = requests.map(req => {
+                const date = new Date(req.requestTime || req.orderTime).toLocaleString('vi-VN');
+                let details = '';
+                if (req.type === 'food_order') {
+                    details = `Nhà hàng: ${req.restaurantName}<br>Tổng: ${req.total.toLocaleString()} VNĐ`;
+                } else if (req.type === 'shipper_request') {
+                    details = `Từ: ${req.pickup}<br>Đến: ${req.delivery}<br>Gói: ${req.package}`;
+                } else if (req.type === 'ride_request') {
+                    details = `Đón: ${req.pickup}<br>Trả: ${req.dropoff}<br>Xe: ${req.vehicle}`;
+                }
+
+                return `
+                    <div class="bg-white rounded-xl shadow-md p-4 flex flex-col md:flex-row justify-between items-start md:items-center">
+                        <div class="mb-2 md:mb-0">
+                            <p class="font-semibold text-gray-800">${req.type === 'food_order' ? 'Đơn hàng đồ ăn' : (req.type === 'shipper_request' ? 'Yêu cầu giao hàng' : 'Yêu cầu gọi xe')}</p>
+                            <p class="text-sm text-gray-600">${details}</p>
+                            <p class="text-xs text-gray-500 mt-1">Thời gian: ${date}</p>
+                            <p class="font-medium text-yellow-600 mt-2">Trạng thái: ${req.status}</p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button class="accept-request-btn px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition duration-200"
+                                data-id="${req.id}" data-user-id="${req.userId}" data-collection-name="${req.collectionRef.parent.id}" data-type="${req.type}">
+                                Chấp nhận
+                            </button>
+                            <button class="reject-request-btn px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition duration-200"
+                                data-id="${req.id}" data-user-id="${req.userId}" data-collection-name="${req.collectionRef.parent.id}">
+                                Từ chối
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Attach event listeners to newly rendered buttons
+            document.querySelectorAll('.accept-request-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = e.currentTarget.dataset.id;
+                    const userId = e.currentTarget.dataset.userId;
+                    const collectionName = e.currentTarget.dataset.collectionName;
+                    const type = e.currentTarget.dataset.type;
+                    await acceptRequest(userId, collectionName, id, type);
+                });
+            });
+
+            document.querySelectorAll('.reject-request-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = e.currentTarget.dataset.id;
+                    const userId = e.currentTarget.dataset.userId;
+                    const collectionName = e.currentTarget.dataset.collectionName;
+                    await rejectRequest(userId, collectionName, id);
+                });
+            });
+        }
+
+        // Function to render the single active request for the current shipper/driver
+        function renderMyActiveRequest(request) {
+            if (!request) {
+                myActiveRequestDiv.innerHTML = `<p class="text-gray-600 text-center">Bạn chưa có yêu cầu nào đang hoạt động.</p>`;
+                return;
+            }
+
+            const date = new Date(request.requestTime || request.orderTime).toLocaleString('vi-VN');
+            let details = '';
+            let statusColorClass = 'status-pending';
+            let updateOptions = ''; // Dropdown options for status update
+
+            // Determine details and status update options based on request type
+            if (request.type === 'food_order') {
+                details = `Nhà hàng: ${request.restaurantName}<br>Tổng: ${request.total.toLocaleString()} VNĐ<br>Địa chỉ lấy: ${request.pickup || 'Chưa có'}<br>Địa chỉ giao: ${request.delivery || 'Chưa có'}`;
+                updateOptions = `
+                    <option value="Shipper đang đến lấy hàng" ${request.status === 'Shipper đang đến lấy hàng' ? 'selected' : ''}>Đang đến lấy hàng</option>
+                    <option value="Đang giao hàng" ${request.status === 'Đang giao hàng' ? 'selected' : ''}>Đang giao hàng</option>
+                    <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
+                `;
+            } else if (request.type === 'shipper_request') {
+                details = `Từ: ${request.pickup}<br>Đến: ${request.delivery}<br>Gói: ${request.package}`;
+                updateOptions = `
+                    <option value="Shipper đang đến lấy hàng" ${request.status === 'Shipper đang đến lấy hàng' ? 'selected' : ''}>Đang đến lấy hàng</option>
+                    <option value="Đang giao hàng" ${request.status === 'Đang giao hàng' ? 'selected' : ''}>Đang giao hàng</option>
+                    <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
+                `;
+            } else if (request.type === 'ride_request') {
+                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${request.vehicle}`;
+                updateOptions = `
+                    <option value="Tài xế đang đến đón" ${request.status === 'Tài xế đang đến đón' ? 'selected' : ''}>Đang đến đón</option>
+                    <option value="Đang trên đường" ${request.status === 'Đang trên đường' ? 'selected' : ''}>Đang trên đường</option>
+                    <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
+                `;
+            }
+
+            // Map status strings to appropriate Tailwind CSS classes for coloring
+            switch (request.status) {
+                case "Đang tìm shipper":
+                case "Đang tìm tài xế":
+                    statusColorClass = 'status-pending';
+                    break;
+                case "Đã gán shipper":
+                case "Đã gán tài xế":
+                case "Shipper đang đến lấy hàng":
+                case "Tài xế đang đến đón":
+                    statusColorClass = 'status-assigned';
+                    break;
+                case "Đang giao hàng":
+                case "Đang trên đường":
+                    statusColorClass = 'status-delivering';
+                    break;
+                case "Đã hoàn thành":
+                    statusColorClass = 'status-completed';
+                    break;
+                case "Đã hủy":
+                    statusColorClass = 'status-cancelled';
+                    break;
+                default:
+                    statusColorClass = 'status-pending'; // Fallback for unknown statuses
+            }
+
+            myActiveRequestDiv.innerHTML = `
+                <div class="bg-blue-50 rounded-xl shadow-md p-6">
+                    <h3 class="text-xl font-semibold text-blue-800 mb-4">Yêu cầu đang xử lý: ${request.type === 'food_order' ? 'Đồ Ăn' : (request.type === 'shipper_request' ? 'Giao Hàng' : 'Gọi Xe')}</h3>
+                    <p class="text-gray-700 text-sm mb-2">ID: <span class="font-mono">${request.id.substring(0, 8)}...</span> (Khách hàng UID: <span class="font-mono">${request.userId.substring(0, 8)}...</span>)</p>
+                    <p class="text-gray-700 text-sm mb-2">${details}</p>
+                    <p class="text-xs text-gray-500 mb-4">Thời gian yêu cầu: ${date}</p>
+                    <p class="font-bold ${statusColorClass} text-lg mb-4">Trạng thái: ${request.status}</p>
+
+                    <div class="flex flex-col space-y-3">
+                        <select id="status-update-selector" class="input-field">
+                            <option value="">Cập nhật trạng thái</option>
+                            ${updateOptions}
+                        </select>
+                        <button id="complete-request-btn" class="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition duration-300 ease-in-out transform hover:-translate-y-1">
+                            Hoàn thành yêu cầu
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Attach event listeners to the status update selector and complete button
+            document.getElementById('status-update-selector').addEventListener('change', async (e) => {
+                const newStatus = e.target.value;
+                if (newStatus) {
+                    await updateRequestStatus(request.userId, request.collectionRef.parent.id, request.id, newStatus);
+                }
+            });
+
+            document.getElementById('complete-request-btn').addEventListener('click', async () => {
+                await updateRequestStatus(request.userId, request.collectionRef.parent.id, request.id, 'Đã hoàn thành');
+            });
+        }
+
+        // Function to handle accepting a request
+        async function acceptRequest(userId, collectionName, requestId, type) {
+            try {
+                const requestRef = doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, requestId);
+                let updateData = {};
+
+                // Set status and assign the current shipper/driver's ID
+                if (type === 'food_order' || type === 'shipper_request') {
+                    updateData = {
+                        status: 'Đã gán shipper',
+                        assignedShipperId: currentShipperUserId
+                    };
+                } else if (type === 'ride_request') {
+                    updateData = {
+                        status: 'Đã gán tài xế',
+                        assignedDriverId: currentShipperUserId
+                    };
+                }
+
+                await updateDoc(requestRef, updateData);
+                showMessage("Thành công", "Bạn đã chấp nhận yêu cầu này. Yêu cầu đã được chuyển vào mục 'Yêu cầu của tôi'.");
+                // The onSnapshot listeners will automatically update the UI
+            } catch (error) {
+                console.error("Lỗi khi chấp nhận yêu cầu:", error);
+                showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${error.message}`);
+            }
+        }
+
+        // Function to handle rejecting a request (currently just a message)
+        async function rejectRequest(userId, collectionName, requestId) {
+            try {
+                // For now, we just show a message. In a real app, you might want to:
+                // 1. Revert the status to "Đang tìm..." if it was temporarily assigned
+                // 2. Notify the customer that the request was rejected by a shipper
+                // 3. Keep a log of rejected requests
+                showMessage("Từ chối", "Bạn đã từ chối yêu cầu này. Yêu cầu sẽ vẫn hiển thị cho các shipper/tài xế khác.");
+            } catch (error) {
+                console.error("Lỗi khi từ chối yêu cầu:", error);
+                showMessage("Lỗi", `Không thể từ chối yêu cầu: ${error.message}`);
+            }
+        }
+
+        // Function to update the status of an active request
+        async function updateRequestStatus(userId, collectionName, requestId, newStatus) {
+            try {
+                const requestRef = doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, requestId);
+                await updateDoc(requestRef, { status: newStatus });
+                showMessage("Cập nhật trạng thái", `Trạng thái đã cập nhật thành "${newStatus}".`);
+                // The onSnapshot listeners will automatically update the UI
+            } catch (error) {
+                console.error("Lỗi khi cập nhật trạng thái:", error);
+                showMessage("Lỗi", `Không thể cập nhật trạng thái: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
