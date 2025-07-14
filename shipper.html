@@ -425,7 +425,7 @@
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'ride_request') {
-                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${request.vehicle}`;
+                details = `Đón: ${request.pickup}<br>Trả: ${req.dropoff}<br>Xe: ${req.vehicle}`;
                 updateOptions = `
                     <option value="Tài xế đang đến đón" ${request.status === 'Tài xế đang đến đón' ? 'selected' : ''}>Đang đến đón</option>
                     <option value="Đang trên đường" ${request.status === 'Đang trên đường' ? 'selected' : ''}>Đang trên đường</option>
@@ -499,9 +499,7 @@
                 const idToken = await auth.currentUser.getIdToken();
 
                 // Define the Cloud Function endpoint URL
-                // Replace YOUR_REGION with your Cloud Function's region (e.g., us-central1)
-                // Replace YOUR_PROJECT_ID with your Firebase project ID
-                const acceptRequestFunctionUrl = `https://YOUR_REGION-YOUR_PROJECT_ID.cloudfunctions.net/acceptRequest`;
+                const acceptRequestFunctionUrl = `https://us-central1-hieu-nguyen-cf05b.cloudfunctions.net/acceptRequest`;
 
                 const response = await fetch(acceptRequestFunctionUrl, {
                     method: 'POST',

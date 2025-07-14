@@ -1,118 +1,120 @@
-/**
- * Firebase Cloud Functions (v2 API) for Multi-Service App Backend
- *
- * This file contains Cloud Functions to handle various backend logic
- * for food orders, shipper requests, and ride hailing requests.
- * It uses the newer v2 API syntax for better performance and features.
- */
-
-// Import necessary modules from Firebase Functions v2 API
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { onCall } = require("firebase-functions/v2/https");
-const logger = require("firebase-functions/logger"); // For logging
-
-// Import Firebase Admin SDK
+const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 
-// Initialize Firebase Admin SDK (required to interact with Firestore, Auth, FCM, etc.)
-admin.initializeApp();
+// Initialize Firebase Admin SDK if not already initialized
+// This check prevents re-initialization in development environments
+if (!admin.apps.length) {
+    admin.initializeApp();
+}
 
-// Get a reference to the Firestore database
 const db = admin.firestore();
 
-// Set global options for Cloud Functions (e.g., max instances for cost control)
-// This applies to v2 functions.
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit.
-// You can override the limit for each function using the `maxInstances` option
-// in the function's options, e.g. `onCall({ maxInstances: 5 }, (req, res) => { ... })`.
-// logger.log("Setting global options for Cloud Functions.");
-// setGlobalOptions({ maxInstances: 10 }); // Uncomment if you want to set a global limit
+/**
+ * Cloud Function to handle accepting a request (order, shipper_request, ride_request).
+ * This function is callable from the client (shipper.html).
+ * It assigns the current authenticated user (shipper/driver) to the request
+ * and updates its status.
+ */
+exports.acceptRequest = functions.https.onCall(async (data, context) => {
+    // 1. Check authentication
+    if (!context.auth) {
+        throw new functions.https.HttpsError(
+            'unauthenticated',
+            'Người dùng chưa được xác thực.'
+        );
+    }
 
-// --- Cloud Function 1: Process New Food Order / Shipper Request / Ride Request ---
-// This function is triggered whenever a new document is created in the 'orders',
-// 'shipper_requests', or 'ride_requests' collections for any user.
-// It automatically processes the initial state and can perform backend tasks.
-exports.processNewRequest = onDocumentCreated('artifacts/{appId}/users/{userId}/{collectionName}/{documentId}', async (event) => {
-    // Get the new document data
-    const newRequest = event.data.data();
-    const userId = event.params.userId;
-    const documentId = event.params.documentId;
-    const appId = event.params.appId;
-    const collectionName = event.params.collectionName; // This will be 'orders', 'shipper_requests', or 'ride_requests'
+    const currentUserId = context.auth.uid;
+    const userRole = context.auth.token.role; // Get the custom claim role
 
-    logger.info(`[Cloud Function] New document created in ${collectionName}: ${documentId} by user ${userId} in app ${appId}`);
-    logger.info('Request data:', newRequest);
+    // 2. Validate input data
+    const { userId, collectionName, requestId, type } = data;
 
-    // Reference to the document that triggered the function
-    const docRef = db.collection(`artifacts/${appId}/users/${userId}/${collectionName}`).doc(documentId);
+    if (!userId || !collectionName || !requestId || !type) {
+        throw new functions.https.HttpsError(
+            'invalid-argument',
+            'Thiếu thông tin yêu cầu (userId, collectionName, requestId, type).'
+        );
+    }
+
+    // Ensure the collectionName is one of the allowed types for safety
+    const allowedCollections = ['orders', 'shipper_requests', 'ride_requests'];
+    if (!allowedCollections.includes(collectionName)) {
+        throw new functions.https.HttpsError(
+            'invalid-argument',
+            'Tên collection không hợp lệ.'
+        );
+    }
+
+    // 3. Validate user role based on request type
+    if ((type === 'food_order' || type === 'shipper_request') && userRole !== 'shipper') {
+        throw new functions.https.HttpsError(
+            'permission-denied',
+            'Bạn không có quyền shipper để chấp nhận yêu cầu này.'
+        );
+    }
+    if (type === 'ride_request' && userRole !== 'driver') {
+        throw new functions.https.HttpsError(
+            'permission-denied',
+            'Bạn không có quyền tài xế để chấp nhận yêu cầu này.'
+        );
+    }
+
+    const requestRef = db.doc(`artifacts/${functions.config().app.id}/users/${userId}/${collectionName}/${requestId}`);
 
     try {
-        // Determine the type of request and apply specific logic
-        if (newRequest.type === 'food_order') {
-            logger.info(`[Food Order] Processing food order for restaurant: ${newRequest.restaurantName}`);
-            // Update order status to "Đang chờ nhà hàng xác nhận"
-            await docRef.update({
-                status: "Đang chờ nhà hàng xác nhận",
-                backendProcessed: true, // Mark as processed by backend
-                processedAt: admin.firestore.FieldValue.serverTimestamp() // Timestamp of processing
-            });
-            logger.info(`[Food Order] Updated status of order ${documentId} to "Đang chờ nhà hàng xác nhận".`);
+        // Use a transaction to ensure atomicity: read, then conditionally update
+        await db.runTransaction(async (transaction) => {
+            const requestDoc = await transaction.get(requestRef);
 
-            // TODO: Implement logic to notify the restaurant (e.g., send to a restaurant management system)
-            // TODO: Implement logic to send push notification to the user via FCM
-            // Example (requires FCM setup and user's FCM token):
-            // admin.messaging().sendToDevice(userFCMToken, { notification: { title: "Đơn hàng của bạn", body: "Nhà hàng đã nhận đơn hàng của bạn!" } });
+            if (!requestDoc.exists) {
+                throw new functions.https.HttpsError(
+                    'not-found',
+                    'Yêu cầu không tồn tại.'
+                );
+            }
 
-        } else if (newRequest.type === 'shipper_request') {
-            logger.info(`[Shipper Request] Processing shipper request from ${newRequest.pickup} to ${newRequest.delivery}`);
-            // Update status for shipper request
-            await docRef.update({
-                status: "Đang tìm shipper",
-                backendProcessed: true,
-                processedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            logger.info(`[Shipper Request] Updated status of request ${documentId} to "Đang tìm shipper".`);
+            const currentData = requestDoc.data();
 
-            // TODO: Implement logic to find and assign a suitable shipper
-            // TODO: Implement logic to notify available shippers
-            // TODO: Calculate estimated cost if not already done on frontend
-        } else if (newRequest.type === 'ride_request') {
-            logger.info(`[Ride Request] Processing ride request from ${newRequest.pickup} to ${newRequest.dropoff} with vehicle type ${newRequest.vehicle}`);
-            // Update status for ride request
-            await docRef.update({
-                status: "Đang tìm tài xế",
-                backendProcessed: true,
-                processedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            logger.info(`[Ride Request] Updated status of request ${documentId} to "Đang tìm tài xế".`);
+            // Check if the request is already assigned to someone else
+            let assignedField = '';
+            let assignedStatus = '';
+            if (type === 'food_order' || type === 'shipper_request') {
+                assignedField = 'assignedShipperId';
+                assignedStatus = 'Đã gán shipper';
+            } else if (type === 'ride_request') {
+                assignedField = 'assignedDriverId';
+                assignedStatus = 'Đã gán tài xế';
+            }
 
-            // TODO: Implement logic to find and assign a suitable driver
-            // TODO: Implement logic to notify available drivers
-            // TODO: Calculate estimated fare
-        } else {
-            logger.warn(`[Cloud Function] Unknown request type: ${newRequest.type} for document ${documentId}`);
-        }
+            if (currentData[assignedField] && currentData[assignedField] !== currentUserId) {
+                throw new functions.https.HttpsError(
+                    'already-exists', // Using already-exists to indicate it's taken
+                    'Yêu cầu này đã được gán cho một người khác.'
+                );
+            }
+
+            // If not assigned or assigned to current user (re-accepting/re-confirming)
+            // Perform the update
+            const updateData = {
+                status: assignedStatus,
+                [assignedField]: currentUserId // Use computed property name for dynamic field
+            };
+
+            transaction.update(requestRef, updateData);
+        });
+
+        return { message: 'Yêu cầu đã được chấp nhận thành công!' };
 
     } catch (error) {
-        logger.error(`[Cloud Function] Error processing document ${documentId} in ${collectionName}:`, error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error; // Re-throw Firebase HttpsError
+        }
+        console.error("Lỗi khi chấp nhận yêu cầu trong Cloud Function:", error);
+        throw new functions.https.HttpsError(
+            'internal',
+            'Đã xảy ra lỗi khi xử lý yêu cầu của bạn.',
+            error.message
+        );
     }
-});
-
-// --- Cloud Function 2: Callable Function Example (can be called from Frontend) ---
-// This function can be invoked directly from your frontend JavaScript code
-// to perform tasks that require admin privileges or complex backend logic.
-exports.sayHello = onCall(async (request) => {
-    // request.data: Data sent from the frontend
-    // request.auth: Contains information about the caller (e.g., request.auth.uid if logged in)
-
-    const name = request.data.name || 'Người dùng';
-    const uid = request.auth ? request.auth.uid : 'ẩn danh';
-
-    logger.info(`[Callable Function] sayHello invoked by ${uid} with name: ${name}`);
-
-    // Return a JSON object to the frontend
-    return { message: `Xin chào, ${name}! Bạn là người dùng ${uid}.` };
 });
