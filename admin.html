@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Ứng Dụng Dịch Vụ</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* Base styles for Inter font and light gray background */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+        }
+        /* Common input field styling */
+        .input-field {
+            @apply shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500;
+        }
+        /* Primary button styling */
+        .btn-primary {
+            @apply px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1;
+        }
+        /* Card styling for sections */
+        .card {
+            @apply bg-white rounded-xl shadow-lg p-6;
+        }
+        /* Status badge styling for different order/request states */
+        .status-badge {
+            @apply px-3 py-1 rounded-full text-xs font-semibold;
+        }
+        /* Specific colors for different statuses */
+        .status-pending { @apply bg-yellow-100 text-yellow-800; }
+        .status-processing { @apply bg-blue-100 text-blue-800; }
+        .status-assigned { @apply bg-indigo-100 text-indigo-800; }
+        .status-delivering { @apply bg-purple-100 text-purple-800; }
+        .status-completed { @apply bg-green-100 text-green-800; }
+        .status-cancelled { @apply bg-red-100 text-red-800; }
+
+        /* Custom modal overlay for messages */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        /* Custom modal content styling */
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-header {
+            @apply text-xl font-semibold text-gray-800 mb-4;
+        }
+        .modal-body {
+            @apply text-gray-700 mb-6;
+        }
+        .modal-footer button {
+            @apply px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div id="admin-app-root" class="w-full max-w-6xl p-4">
+        <!-- Login Section: Displayed when no admin is logged in -->
+        <div id="login-section" class="card mx-auto max-w-md text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-6">Admin Login</h1>
+            <input type="email" id="admin-email" class="input-field mb-4" placeholder="Email Admin">
+            <input type="password" id="admin-password" class="input-field mb-6" placeholder="Mật khẩu">
+            <button id="login-btn" class="btn-primary w-full">Đăng nhập Admin</button>
+            <p id="login-error" class="text-red-500 mt-4 hidden"></p>
+        </div>
+
+        <!-- Admin Dashboard Section: Displayed when an admin is logged in -->
+        <div id="dashboard-section" class="hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-3xl font-bold text-gray-800">Bảng điều khiển Admin</h1>
+                <button id="logout-btn" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition duration-200">
+                    Đăng xuất
+                </button>
+            </div>
+
+            <div class="card mb-6">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Tổng quan Đơn hàng & Yêu cầu</h2>
+                <div id="orders-list" class="space-y-4">
+                    <p class="text-gray-600 text-center">Đang tải dữ liệu...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Modal HTML: Used for displaying messages to the user -->
+    <div id="custom-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 id="modal-title" class="modal-header"></h2>
+            <p id="modal-message" class="modal-body"></p>
+            <div class="modal-footer">
+                <button id="modal-close-btn">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs: Required for Firebase Authentication and Firestore -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collectionGroup, query, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration: MUST BE THE SAME AS YOUR MAIN APP'S CONFIG
+        // Replace 'hieu-nguyen-cf05b' with your actual Firebase Project ID
+        const appId = 'hieu-nguyen-cf05b';
+        const firebaseConfig = {
+            apiKey: "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI",
+            authDomain: "hieu-nguyen-cf05b.firebaseapp.com",
+            projectId: "hieu-nguyen-cf05b",
+            storageBucket: "hieu-nguyen-cf05b.firebasestorage.app",
+            messagingSenderId: "43504362983",
+            appId: "1:43504362983:web:887ba856c9189f2a4e4942",
+            measurementId: "G-R6PNSC5QX5"
+        };
+
+        // Initialize Firebase services
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Get references to UI elements
+        const loginSection = document.getElementById('login-section');
+        const dashboardSection = document.getElementById('dashboard-section');
+        const adminEmailInput = document.getElementById('admin-email');
+        const adminPasswordInput = document.getElementById('admin-password');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const loginError = document.getElementById('login-error');
+        const ordersListDiv = document.getElementById('orders-list');
+
+        // --- Utility Functions (Modal for messages) ---
+        function showMessage(title, message) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = message;
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+        // Event listener to close the modal
+        document.getElementById('modal-close-btn').addEventListener('click', () => {
+            document.getElementById('custom-modal').classList.add('hidden');
+        });
+
+        // --- Authentication Logic ---
+        // Listener for Firebase Auth state changes
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // User is signed in. Now, check their custom claims to verify admin role.
+                // Force refresh token to get the latest custom claims.
+                const idTokenResult = await user.getIdTokenResult(true);
+                if (idTokenResult.claims.admin) {
+                    // User has 'admin: true' custom claim, so they are an admin.
+                    loginSection.classList.add('hidden'); // Hide login form
+                    dashboardSection.classList.remove('hidden'); // Show dashboard
+                    loadAllRequests(); // Load all orders/requests for admin
+                } else {
+                    // User is signed in but does NOT have admin privileges.
+                    showMessage("Truy cập bị từ chối", "Bạn không có quyền truy cập trang Admin.");
+                    await signOut(auth); // Log them out immediately for security
+                    loginSection.classList.remove('hidden'); // Show login form again
+                    dashboardSection.classList.add('hidden'); // Hide dashboard
+                }
+            } else {
+                // No user is signed in. Display the login form.
+                loginSection.classList.remove('hidden');
+                dashboardSection.classList.add('hidden');
+            }
+        });
+
+        // Event listener for admin login button
+        loginBtn.addEventListener('click', async () => {
+            const email = adminEmailInput.value;
+            const password = adminPasswordInput.value;
+            loginError.classList.add('hidden'); // Hide any previous error messages
+
+            if (!email || !password) {
+                loginError.innerText = "Vui lòng nhập email và mật khẩu.";
+                loginError.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                // Attempt to sign in with provided email and password
+                await signInWithEmailAndPassword(auth, email, password);
+                // If successful, the onAuthStateChanged listener above will handle the UI update
+            } catch (error) {
+                console.error("Lỗi đăng nhập:", error);
+                let errorMessage = "Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.";
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    errorMessage = "Email hoặc mật khẩu không đúng.";
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = "Email không hợp lệ.";
+                }
+                loginError.innerText = errorMessage;
+                loginError.classList.remove('hidden');
+            }
+        });
+
+        // Event listener for logout button
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await signOut(auth); // Sign out the current user
+                showMessage("Đăng xuất", "Bạn đã đăng xuất thành công.");
+                // The onAuthStateChanged listener will detect the logout and update the UI
+            } catch (error) {
+                console.error("Lỗi đăng xuất:", error);
+                showMessage("Lỗi", "Không thể đăng xuất.");
+            }
+        });
+
+        // --- Data Loading and Display ---
+        // Function to load all requests (orders, shipper, ride) from Firestore
+        // This uses collectionGroup queries, which require specific indexes in Firestore.
+        // If you encounter "The query requires an index..." errors, create the suggested index
+        // in your Firebase Console -> Firestore Database -> Indexes.
+        // Example indexes needed:
+        // Collection ID: orders, Fields: requestTime (Ascending)
+        // Collection ID: shipper_requests, Fields: requestTime (Ascending)
+        // Collection ID: ride_requests, Fields: requestTime (Ascending)
+        async function loadAllRequests() {
+            // Use onSnapshot for real-time updates of all requests
+            // Query for 'orders' collection group across all users
+            const ordersQuery = query(collectionGroup(db, 'orders'));
+            onSnapshot(ordersQuery, (snapshot) => {
+                // Map document data to include ID, userId, and a reference to the document for updates
+                const orders = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    userId: doc.ref.parent.parent.id, // Get the user ID from the parent collection
+                    ...doc.data(),
+                    collectionRef: doc.ref // Store the full document reference for updates
+                }));
+                updateCombinedList(orders, 'orders'); // Update the combined list of requests
+            }, (error) => {
+                console.error("Lỗi khi tải đơn hàng:", error);
+                ordersListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng: ${error.message}</p>`;
+            });
+
+            // Query for 'shipper_requests' collection group across all users
+            const shipperRequestsQuery = query(collectionGroup(db, 'shipper_requests'));
+            onSnapshot(shipperRequestsQuery, (snapshot) => {
+                const shipperRequests = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    userId: doc.ref.parent.parent.id,
+                    ...doc.data(),
+                    collectionRef: doc.ref
+                }));
+                updateCombinedList(shipperRequests, 'shipper_requests');
+            }, (error) => {
+                console.error("Lỗi khi tải yêu cầu shipper:", error);
+                ordersListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu shipper: ${error.message}</p>`;
+            });
+
+            // Query for 'ride_requests' collection group across all users
+            const rideRequestsQuery = query(collectionGroup(db, 'ride_requests'));
+            onSnapshot(rideRequestsQuery, (snapshot) => {
+                const rideRequests = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    userId: doc.ref.parent.parent.id,
+                    ...doc.data(),
+                    collectionRef: doc.ref
+                }));
+                updateCombinedList(rideRequests, 'ride_requests');
+            }, (error) => {
+                console.error("Lỗi khi tải yêu cầu gọi xe:", error);
+                ordersListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe: ${error.message}</p>`;
+            });
+        }
+
+        let combinedRequests = []; // Array to hold all types of requests
+
+        // Function to update the combined list and re-render the table
+        function updateCombinedList(newItems, collectionType) {
+            // Filter out old items of the current collectionType to avoid duplicates
+            combinedRequests = combinedRequests.filter(item => item.collectionRef.parent.id !== collectionType);
+            // Add the new items
+            combinedRequests = [...combinedRequests, ...newItems];
+
+            // Sort all requests by their creation time (newest first)
+            combinedRequests.sort((a, b) => {
+                const timeA = new Date(a.requestTime || a.orderTime || 0);
+                const timeB = new Date(b.requestTime || b.orderTime || 0);
+                return timeB - timeA; // Sort in descending order (newest first)
+            });
+            renderOrders(combinedRequests); // Re-render the table with the updated list
+        }
+
+        // Function to render the orders/requests table
+        function renderOrders(orders) {
+            if (orders.length === 0) {
+                ordersListDiv.innerHTML = `<p class="text-gray-600 text-center mt-8">Chưa có đơn hàng hoặc yêu cầu nào.</p>`;
+                return;
+            }
+
+            // Build the HTML table string
+            ordersListDiv.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded-lg shadow overflow-hidden">
+                        <thead class="bg-gray-200 text-gray-700 uppercase text-sm leading-normal">
+                            <tr>
+                                <th class="py-3 px-6 text-left">ID Đơn hàng/Yêu cầu</th>
+                                <th class="py-3 px-6 text-left">Loại</th>
+                                <th class="py-3 px-6 text-left">Chi tiết</th>
+                                <th class="py-3 px-6 text-left">Trạng thái</th>
+                                <th class="py-3 px-6 text-left">Thời gian</th>
+                                <th class="py-3 px-6 text-center">Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-gray-600 text-sm font-light">
+                            ${orders.map(order => {
+                                const date = new Date(order.requestTime || order.orderTime).toLocaleString('vi-VN');
+                                let details = '';
+                                let statusColorClass = 'status-pending'; // Default status color
+
+                                // Determine details based on request type
+                                if (order.type === 'food_order') {
+                                    details = `Nhà hàng: ${order.restaurantName}<br>Tổng: ${order.total.toLocaleString()} VNĐ`;
+                                } else if (order.type === 'shipper_request') {
+                                    details = `Từ: ${order.pickup}<br>Đến: ${order.delivery}<br>Gói: ${order.package}`;
+                                } else if (order.type === 'ride_request') {
+                                    details = `Đón: ${order.pickup}<br>Trả: ${order.dropoff}<br>Xe: ${order.vehicle}`;
+                                }
+
+                                // Map status strings to appropriate Tailwind CSS classes for coloring
+                                switch (order.status) {
+                                    case "Đang chờ xác nhận":
+                                    case "Đang tìm shipper":
+                                    case "Đang tìm tài xế":
+                                        statusColorClass = 'status-pending';
+                                        break;
+                                    case "Đang xử lý":
+                                    case "Đang chuẩn bị":
+                                        statusColorClass = 'status-processing';
+                                        break;
+                                    case "Đã xác nhận":
+                                    case "Đã gán shipper":
+                                    case "Shipper đang đến lấy hàng":
+                                    case "Tài xế đang đến đón":
+                                        statusColorClass = 'status-assigned';
+                                        break;
+                                    case "Đang giao hàng":
+                                    case "Đang trên đường":
+                                        statusColorClass = 'status-delivering';
+                                        break;
+                                    case "Đã hoàn thành":
+                                        statusColorClass = 'status-completed';
+                                        break;
+                                    case "Đã hủy":
+                                        statusColorClass = 'status-cancelled';
+                                        break;
+                                    default:
+                                        statusColorClass = 'status-pending'; // Fallback for unknown statuses
+                                }
+
+                                return `
+                                    <tr class="border-b border-gray-200 hover:bg-gray-100">
+                                        <td class="py-3 px-6 text-left whitespace-nowrap">
+                                            <span class="font-medium">${order.id.substring(0, 8)}...</span>
+                                            <span class="block text-xs text-gray-400 break-all">UID: ${order.userId.substring(0, 8)}...</span>
+                                        </td>
+                                        <td class="py-3 px-6 text-left">
+                                            ${order.type === 'food_order' ? 'Đồ Ăn' : (order.type === 'shipper_request' ? 'Giao Hàng' : 'Gọi Xe')}
+                                        </td>
+                                        <td class="py-3 px-6 text-left text-sm">${details}</td>
+                                        <td class="py-3 px-6 text-left">
+                                            <span class="status-badge ${statusColorClass}">${order.status}</span>
+                                        </td>
+                                        <td class="py-3 px-6 text-left text-xs">${date}</td>
+                                        <td class="py-3 px-6 text-center">
+                                            <select class="status-selector input-field text-sm" data-id="${order.id}" data-user-id="${order.userId}" data-collection-name="${order.collectionRef.parent.id}">
+                                                <option value="">Cập nhật trạng thái</option>
+                                                <option value="Đang chờ xác nhận" ${order.status === 'Đang chờ xác nhận' ? 'selected' : ''}>Đang chờ xác nhận</option>
+                                                <option value="Đang xử lý" ${order.status === 'Đang xử lý' ? 'selected' : ''}>Đang xử lý</option>
+                                                <option value="Đang chuẩn bị" ${order.status === 'Đang chuẩn bị' ? 'selected' : ''}>Đang chuẩn bị</option>
+                                                <option value="Đã xác nhận" ${order.status === 'Đã xác nhận' ? 'selected' : ''}>Đã xác nhận</option>
+                                                <option value="Đã gán shipper" ${order.status === 'Đã gán shipper' ? 'selected' : ''}>Đã gán shipper</option>
+                                                <option value="Shipper đang đến lấy hàng" ${order.status === 'Shipper đang đến lấy hàng' ? 'selected' : ''}>Shipper đang đến lấy hàng</option>
+                                                <option value="Tài xế đang đến đón" ${order.status === 'Tài xế đang đến đón' ? 'selected' : ''}>Tài xế đang đến đón</option>
+                                                <option value="Đang giao hàng" ${order.status === 'Đang giao hàng' ? 'selected' : ''}>Đang giao hàng</option>
+                                                <option value="Đang trên đường" ${order.status === 'Đang trên đường' ? 'selected' : ''}>Đang trên đường</option>
+                                                <option value="Đã hoàn thành" ${order.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
+                                                <option value="Đã hủy" ${order.status === 'Đã hủy' ? 'selected' : ''}>Đã hủy</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            // Attach event listeners to all status selector dropdowns
+            document.querySelectorAll('.status-selector').forEach(select => {
+                select.addEventListener('change', async (e) => {
+                    const orderId = e.target.dataset.id;
+                    const userId = e.target.dataset.userId;
+                    const collectionName = e.target.dataset.collectionName;
+                    const newStatus = e.target.value;
+
+                    if (newStatus) {
+                        await updateOrderStatus(userId, collectionName, orderId, newStatus);
+                    }
+                });
+            });
+        }
+
+        // Function to update the status of an order/request in Firestore
+        async function updateOrderStatus(userId, collectionName, orderId, newStatus) {
+            try {
+                // Get a reference to the specific document
+                const orderRef = doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, orderId);
+                // Update the 'status' field
+                await updateDoc(orderRef, { status: newStatus });
+                showMessage("Cập nhật thành công", `Trạng thái của ${orderId.substring(0, 8)}... đã được cập nhật thành "${newStatus}".`);
+            } catch (error) {
+                console.error("Lỗi khi cập nhật trạng thái đơn hàng:", error);
+                showMessage("Cập nhật thất bại", `Không thể cập nhật trạng thái: ${error.message}`);
+            }
+        }
+
+        // --- Firestore Indexes for collectionGroup queries ---
+        // IMPORTANT: If you encounter errors like "The query requires an index...",
+        // you will need to create a composite index in Firebase Console.
+        // Go to Firebase Console -> Firestore Database -> Indexes.
+        // For example, for 'orders' collection group, you might need an index on:
+        // Collection ID: orders
+        // Fields:
+        //   - requestTime (Ascending)
+        //   - (any other fields you might filter or order by in future queries)
+        // The console will usually provide a link to create the missing index.
+        // You will need one index for each collection group you query (orders, shipper_requests, ride_requests)
+        // if you are ordering or filtering them.
+    </script>
+</body>
+</html>
