@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter Font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Google Fonts for Material Icons (optional, for better icons) -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -72,6 +74,41 @@
 <body class="bg-gray-100">
     <div id="app-root" class="min-h-screen flex flex-col">
         <!-- Content will be rendered here by JavaScript -->
+        <!-- Initial login screen -->
+        <div id="login-screen" class="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 p-4">
+            <div class="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+                <h1 class="text-3xl font-bold text-gray-800 mb-6">Đăng nhập để sử dụng dịch vụ</h1>
+                <p class="text-gray-600 mb-6">Chọn cách bạn muốn đăng nhập:</p>
+
+                <div class="space-y-4">
+                    <!-- Email/Password Login Form -->
+                    <input type="email" id="email-input" class="input-field" placeholder="Email của bạn">
+                    <input type="password" id="password-input" class="input-field" placeholder="Mật khẩu">
+                    <button id="email-login-btn" class="btn-primary w-full">Đăng nhập</button>
+                    <button id="email-signup-btn" class="w-full py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300 transition duration-300 ease-in-out transform hover:-translate-y-1">Đăng ký</button>
+                    <p class="text-red-500 text-sm mt-2 hidden" id="auth-error-message"></p>
+
+                    <div class="relative flex items-center justify-center my-6">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-gray-300"></div>
+                        </div>
+                        <div class="relative bg-white px-4 text-sm text-gray-500">HOẶC</div>
+                    </div>
+
+                    <!-- Google Login Button -->
+                    <button id="google-login-btn" class="w-full py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300 ease-in-out transform hover:-translate-y-1 flex items-center justify-center space-x-2">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12.24 10.27H12.01V10.23H12.24C14.71 10.23 16.59 12.11 16.59 14.58C16.59 17.05 14.71 18.93 12.24 18.93C9.77 18.93 7.89 17.05 7.89 14.58C7.89 12.11 9.77 10.23 12.24 10.23ZM12.24 8.73C8.93 8.73 6.19 11.47 6.19 14.58C6.19 17.69 8.93 20.43 12.24 20.43C15.55 20.43 18.29 17.69 18.29 14.58C18.29 11.47 15.55 8.73 12.24 8.73Z" fill="#EA4335"/>
+                            <path d="M12.24 6.94C10.61 6.94 9.06 7.42 7.74 8.28L6.42 7.15C7.94 6.06 9.94 5.44 12.24 5.44C14.54 5.44 16.54 6.06 18.06 7.15L16.74 8.28C15.42 7.42 13.87 6.94 12.24 6.94Z" fill="#FBBC04"/>
+                            <path d="M12.24 3.65C10.15 3.65 8.24 4.07 6.61 4.85L5.29 3.72C7.09 2.82 9.42 2.29 12.24 2.29C15.06 2.29 17.39 2.82 19.19 3.72L17.87 4.85C16.24 4.07 14.33 3.65 12.24 3.65Z" fill="#4285F4"/>
+                            <path d="M12.24 0.96C10.05 0.96 8.04 1.34 6.32 2.05L5.00 0.92C6.88 0.08 9.24 -0.29 12.24 -0.29C15.24 -0.29 17.60 0.08 19.48 0.92L18.16 2.05C16.44 1.34 14.43 0.96 12.24 0.96Z" fill="#34A853"/>
+                        </svg>
+                        <span>Đăng nhập với Google</span>
+                    </button>
+                    <button id="anonymous-login-btn" class="w-full py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800 transition duration-300 ease-in-out transform hover:-translate-y-1">Tiếp tục với vai trò Khách</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Custom Modal HTML -->
@@ -88,18 +125,11 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, collectionGroup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables provided by the Canvas environment (these will be undefined when running locally)
-        // Khi chạy cục bộ, bạn cần điền thông tin cấu hình Firebase của mình vào đây.
-        // HƯỚNG DẪN: Lấy cấu hình này từ Firebase Console của dự án bạn đã tạo:
-        // 1. Truy cập Firebase Console -> Dự án của bạn.
-        // 2. Nhấp vào biểu tượng "Cài đặt dự án" (Project settings) (hình bánh răng) bên cạnh "Tổng quan về dự án" (Project overview).
-        // 3. Cuộn xuống phần "Ứng dụng của bạn" (Your apps).
-        // 4. Nếu chưa có ứng dụng web, nhấp vào biểu tượng "</>" (Web) để thêm ứng dụng web mới.
-        // 5. Sao chép đối tượng `firebaseConfig` được cung cấp và dán vào đây.
-        const appId = 'hieu-nguyen-cf05b'; // Thay thế bằng ID dự án Firebase của bạn (ví dụ: my-delivery-app-12345)
+        const appId = 'hieu-nguyen-cf05b'; // Thay thế bằng ID dự án Firebase của bạn
         const firebaseConfig = {
             apiKey: "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI",
             authDomain: "hieu-nguyen-cf05b.firebaseapp.com",
@@ -109,7 +139,7 @@
             appId: "1:43504362983:web:887ba856c9189f2a4e4942",
             measurementId: "G-R6PNSC5QX5"
         };
-        const initialAuthToken = null; // Không cần thiết khi chạy cục bộ, đăng nhập ẩn danh sẽ được sử dụng
+        const initialAuthToken = null; // Không cần thiết khi chạy cục bộ
 
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
@@ -118,7 +148,18 @@
 
         let currentUser = null;
         let currentUserId = null;
-        let isAuthReady = false;
+        let isAuthReady = false; // Flag to ensure auth state is determined once
+
+        // UI Elements for Login Screen
+        const loginScreen = document.getElementById('login-screen');
+        const appRootContent = document.getElementById('app-root'); // The main container for app content
+        const emailInput = document.getElementById('email-input');
+        const passwordInput = document.getElementById('password-input');
+        const emailLoginBtn = document.getElementById('email-login-btn');
+        const emailSignupBtn = document.getElementById('email-signup-btn');
+        const googleLoginBtn = document.getElementById('google-login-btn');
+        const anonymousLoginBtn = document.getElementById('anonymous-login-btn');
+        const authErrorMessage = document.getElementById('auth-error-message');
 
         // --- Utility Functions ---
 
@@ -139,12 +180,6 @@
             let chatHistory = [];
             chatHistory.push({ role: "user", parts: [{ text: prompt }] });
             const payload = { contents: chatHistory };
-            // Khi chạy cục bộ, bạn cần điền API key của Google Gemini vào đây.
-            // HƯỚNG DẪN: Lấy API key từ Google Cloud Console hoặc Google AI Studio.
-            // 1. Truy cập https://console.cloud.google.com/ hoặc https://aistudio.google.com/
-            // 2. Tạo một dự án mới (nếu chưa có).
-            // 3. Kích hoạt Gemini API (hoặc Generative Language API).
-            // 4. Tạo một API key.
             const geminiApiKey = "AIzaSyADQc9AB6umXk6TY8-UyB1QMbonbLTM99Y"; // Thay thế bằng API key thực của bạn
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
 
@@ -172,8 +207,9 @@
         // --- Page Rendering Functions ---
 
         function renderHomePage() {
-            const appRoot = document.getElementById('app-root');
-            appRoot.innerHTML = `
+            // Hide login screen and show main app content
+            loginScreen.classList.add('hidden');
+            appRootContent.innerHTML = `
                 <div class="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 p-4">
                     <h1 class="text-4xl font-extrabold text-gray-800 mb-8 text-center">Chào mừng đến với Ứng dụng Dịch vụ!</h1>
                     <p class="text-lg text-gray-600 mb-10 text-center max-w-md">
@@ -199,6 +235,9 @@
                     <p class="mt-10 text-sm text-gray-500">
                         ID người dùng của bạn: <span class="font-mono text-gray-700 break-all">${currentUserId}</span>
                     </p>
+                    <button id="logout-main-btn" class="mt-4 px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300 ease-in-out transform hover:-translate-y-1">
+                        Đăng xuất
+                    </button>
                 </div>
             `;
 
@@ -206,6 +245,16 @@
             document.getElementById('shipper-service-btn').addEventListener('click', () => renderShipperServicePage());
             document.getElementById('ride-hailing-btn').addEventListener('click', () => renderRideHailingPage());
             document.getElementById('order-history-btn').addEventListener('click', () => renderOrderHistoryPage());
+            document.getElementById('logout-main-btn').addEventListener('click', async () => {
+                try {
+                    await signOut(auth);
+                    showMessage("Đăng xuất", "Bạn đã đăng xuất thành công.");
+                    // After logout, onAuthStateChanged will trigger and show login screen
+                } catch (error) {
+                    console.error("Lỗi đăng xuất:", error);
+                    showMessage("Lỗi", "Không thể đăng xuất.");
+                }
+            });
         }
 
         let restaurants = [];
@@ -857,7 +906,7 @@
         // --- Google Maps Integration (Basic) ---
         let map;
         let mapMarker;
-        let googleMapsApiKey = "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI"; // Thay thế bằng API key Google Maps của bạn
+        let googleMapsApiKey = "AIzaSyBiC1YXX9jtpVpA1VraQnh77Qgz2tDYhkk"; // Thay thế bằng API key Google Maps của bạn
 
         // Load Google Maps API script dynamically
         function loadGoogleMapsScript(callback) {
@@ -898,40 +947,111 @@
             });
         }
 
+        // --- Authentication Event Listeners ---
+        emailSignupBtn.addEventListener('click', async () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            authErrorMessage.classList.add('hidden'); // Hide previous errors
+
+            if (!email || !password) {
+                authErrorMessage.innerText = "Vui lòng nhập email và mật khẩu.";
+                authErrorMessage.classList.remove('hidden');
+                return;
+            }
+            if (password.length < 6) {
+                authErrorMessage.innerText = "Mật khẩu phải có ít nhất 6 ký tự.";
+                authErrorMessage.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                // onAuthStateChanged will handle UI update
+            } catch (error) {
+                console.error("Lỗi đăng ký:", error);
+                let errorMessage = "Đăng ký thất bại.";
+                if (error.code === 'auth/email-already-in-use') {
+                    errorMessage = "Email này đã được sử dụng.";
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = "Email không hợp lệ.";
+                }
+                authErrorMessage.innerText = errorMessage;
+                authErrorMessage.classList.remove('hidden');
+            }
+        });
+
+        emailLoginBtn.addEventListener('click', async () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            authErrorMessage.classList.add('hidden'); // Hide previous errors
+
+            if (!email || !password) {
+                authErrorMessage.innerText = "Vui lòng nhập email và mật khẩu.";
+                authErrorMessage.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                // onAuthStateChanged will handle UI update
+            } catch (error) {
+                console.error("Lỗi đăng nhập:", error);
+                let errorMessage = "Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.";
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    errorMessage = "Email hoặc mật khẩu không đúng.";
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = "Email không hợp lệ.";
+                }
+                authErrorMessage.innerText = errorMessage;
+                authErrorMessage.classList.remove('hidden');
+            }
+        });
+
+        googleLoginBtn.addEventListener('click', async () => {
+            const provider = new GoogleAuthProvider();
+            authErrorMessage.classList.add('hidden'); // Hide previous errors
+            try {
+                await signInWithPopup(auth, provider);
+                // onAuthStateChanged will handle UI update
+            } catch (error) {
+                console.error("Lỗi đăng nhập Google:", error);
+                let errorMessage = "Đăng nhập Google thất bại.";
+                if (error.code === 'auth/popup-closed-by-user') {
+                    errorMessage = "Cửa sổ đăng nhập Google đã bị đóng.";
+                } else if (error.code === 'auth/cancelled-popup-request') {
+                    errorMessage = "Yêu cầu đăng nhập Google đã bị hủy.";
+                }
+                authErrorMessage.innerText = errorMessage;
+                authErrorMessage.classList.remove('hidden');
+            }
+        });
+
+        anonymousLoginBtn.addEventListener('click', async () => {
+            authErrorMessage.classList.add('hidden'); // Hide previous errors
+            try {
+                await signInAnonymously(auth);
+                // onAuthStateChanged will handle UI update
+            } catch (error) {
+                console.error("Lỗi đăng nhập ẩn danh:", error);
+                authErrorMessage.innerText = "Không thể đăng nhập ẩn danh. Vui lòng thử lại.";
+                authErrorMessage.classList.remove('hidden');
+            }
+        });
+
         // --- Initialization ---
         window.onload = function() {
             onAuthStateChanged(auth, async (user) => {
-                if (!isAuthReady) { // Only run this block once for initial setup
-                    if (user) {
-                        currentUser = user;
-                        currentUserId = user.uid;
-                    } else {
-                        try {
-                            if (initialAuthToken) {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                            } else {
-                                const anonymousUserCredential = await signInAnonymously(auth);
-                                currentUser = anonymousUserCredential.user;
-                                currentUserId = anonymousUserCredential.user.uid;
-                            }
-                        } catch (error) {
-                            console.error("Lỗi đăng nhập Firebase:", error);
-                            // Fallback to a random UUID if anonymous sign-in fails
-                            currentUserId = crypto.randomUUID();
-                        }
-                    }
+                if (user) {
+                    // User is signed in.
+                    currentUser = user;
+                    currentUserId = user.uid;
                     isAuthReady = true;
-                    renderHomePage(); // Render page only after auth state is determined and currentUserId is set
+                    renderHomePage(); // Render main app content
                 } else {
-                    // If auth state changes after initial load (e.g., user logs out/in), re-render home page
-                    if (user) {
-                        currentUser = user;
-                        currentUserId = user.uid;
-                    } else {
-                        // If user logs out, currentUserId might become null, handle gracefully
-                        currentUserId = crypto.randomUUID(); // Assign a new anonymous ID or handle logout state
-                    }
-                    renderHomePage(); // Re-render if auth state changes
+                    // No user is signed in. Show login screen.
+                    loginScreen.classList.remove('hidden');
+                    appRootContent.innerHTML = ''; // Clear previous content if any
+                    isAuthReady = false; // Auth not ready for main app features until user signs in
                 }
             });
         };
