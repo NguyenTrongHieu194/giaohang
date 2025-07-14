@@ -258,8 +258,8 @@
             // Listen for all orders (food_order) - relevant for 'shipper' role
             if (currentShipperRole === 'shipper') {
                 const ordersQuery = query(
-                    collectionGroup(db, 'orders')
-                    // Removed where('type', '==', 'food_order') for testing
+                    collectionGroup(db, 'orders'),
+                    where('type', '==', 'food_order') // Re-added where('type', '==', 'food_order')
                 );
                 onSnapshot(ordersQuery, (snapshot) => {
                     const orders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -271,8 +271,8 @@
 
                 // Listen for all shipper requests (shipper_request) - relevant for 'shipper' role
                 const shipperRequestsQuery = query(
-                    collectionGroup(db, 'shipper_requests')
-                    // Removed where('type', '==', 'shipper_request') for testing
+                    collectionGroup(db, 'shipper_requests'),
+                    where('type', '==', 'shipper_request') // Re-added where('type', '==', 'shipper_request')
                 );
                 onSnapshot(shipperRequestsQuery, (snapshot) => {
                     const shipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -287,8 +287,8 @@
             // Listen for all ride requests (ride_request) - relevant for 'driver' role
             if (currentShipperRole === 'driver') {
                 const rideRequestsQuery = query(
-                    collectionGroup(db, 'ride_requests')
-                    // Removed where('type', '==', 'ride_request') for testing
+                    collectionGroup(db, 'ride_requests'),
+                    where('type', '==', 'ride_request') // Re-added where('type', '==', 'ride_request')
                 );
                 onSnapshot(rideRequestsQuery, (snapshot) => {
                     const rideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
