@@ -1049,8 +1049,8 @@
                     renderHomePage(); // Render main app content
                 } else {
                     // No user is signed in. Show login screen.
-                    loginScreen.classList.remove('hidden');
-                    appRootContent.innerHTML = ''; // Clear previous content if any
+                    loginScreen.classList.remove('hidden'); // Show login screen
+                    // appRootContent.innerHTML = ''; // Dòng này đã bị xóa để tránh màn hình trắng
                     isAuthReady = false; // Auth not ready for main app features until user signs in
                 }
             });
