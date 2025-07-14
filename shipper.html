@@ -162,7 +162,7 @@
         const availableRequestsListDiv = document.getElementById('available-requests-list');
         const myActiveRequestDiv = document.getElementById('my-active-request');
 
-        // --- Utility Functions (Modal for messages) ---
+        // --- Utility Functions (Modal) ---
         function showMessage(title, message) {
             document.getElementById('modal-title').innerText = title;
             document.getElementById('modal-message').innerText = message;
@@ -255,15 +255,11 @@
                 return;
             }
 
-            // Listen for available requests (status: "Đang tìm shipper/tài xế")
-            // and requests already assigned to this shipper/driver.
-
-            // Orders (food_order) - relevant for 'shipper' role
+            // Listen for all orders (food_order) - relevant for 'shipper' role
             if (currentShipperRole === 'shipper') {
                 const ordersQuery = query(
-                    collectionGroup(db, 'orders'),
-                    where('type', '==', 'food_order') // Filter by type
-                    // Firestore rules will handle permissions based on status and assignedShipperId
+                    collectionGroup(db, 'orders')
+                    // Removed where('type', '==', 'food_order') for testing
                 );
                 onSnapshot(ordersQuery, (snapshot) => {
                     const orders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -273,11 +269,10 @@
                     availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng: ${error.message}</p>`;
                 });
 
-                // Shipper Requests (shipper_request) - relevant for 'shipper' role
+                // Listen for all shipper requests (shipper_request) - relevant for 'shipper' role
                 const shipperRequestsQuery = query(
-                    collectionGroup(db, 'shipper_requests'),
-                    where('type', '==', 'shipper_request') // Filter by type
-                    // Firestore rules will handle permissions based on status and assignedShipperId
+                    collectionGroup(db, 'shipper_requests')
+                    // Removed where('type', '==', 'shipper_request') for testing
                 );
                 onSnapshot(shipperRequestsQuery, (snapshot) => {
                     const shipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -289,12 +284,11 @@
             }
 
 
-            // Ride Requests (ride_request) - relevant for 'driver' role
+            // Listen for all ride requests (ride_request) - relevant for 'driver' role
             if (currentShipperRole === 'driver') {
                 const rideRequestsQuery = query(
-                    collectionGroup(db, 'ride_requests'),
-                    where('type', '==', 'ride_request') // Filter by type
-                    // Firestore rules will handle permissions based on status and assignedDriverId
+                    collectionGroup(db, 'ride_requests')
+                    // Removed where('type', '==', 'ride_request') for testing
                 );
                 onSnapshot(rideRequestsQuery, (snapshot) => {
                     const rideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));

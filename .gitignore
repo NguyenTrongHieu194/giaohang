@@ -67,5 +67,5 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
-# Firebase Admin SDK Service Account Key - DO NOT COMMIT!
-scripts/hieu-nguyen-cf05b-firebase-adminsdk-fbsvc-e478168adc.json
+# Firebase Admin SDK Service Account Keys - DO NOT COMMIT!
+scripts/*.json
