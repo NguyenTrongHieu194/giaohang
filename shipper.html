@@ -501,6 +501,9 @@
                 // Define the Cloud Function endpoint URL
                 const acceptRequestFunctionUrl = `https://us-central1-hieu-nguyen-cf05b.cloudfunctions.net/acceptRequest`;
 
+                // Log the data being sent to the Cloud Function for debugging
+                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type });
+
                 const response = await fetch(acceptRequestFunctionUrl, {
                     method: 'POST',
                     headers: {
@@ -520,8 +523,8 @@
                 if (response.ok) {
                     showMessage("Thành công", result.message);
                 } else {
-                    showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${result.error || 'Lỗi không xác định.'}`);
-                    console.error("Lỗi từ Cloud Function:", result.error);
+                    showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${result.error || result.message || 'Lỗi không xác định.'}`);
+                    console.error("Lỗi từ Cloud Function:", result); // Log full error object
                 }
             } catch (error) {
                 console.error("Lỗi khi gọi Cloud Function:", error);
