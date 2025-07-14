@@ -21,32 +21,77 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
     // We stringify it to ensure all properties are visible in logs, even nested ones.
     console.log("Full context object:", JSON.stringify(context, null, 2)); 
     console.log("Cloud Function GCLOUD_PROJECT env var:", process.env.GCLOUD_PROJECT);
+    // Add this new log for context.auth status
+    console.log("Context Auth Status (for debug):", context.auth ? "Present" : "Missing");
+    if (context.auth) {
+        console.log("Context Auth UID (for debug):", context.auth.uid);
+        console.log("Context Auth Token (role) (for debug):", context.auth.token ? context.auth.token.role : "N/A");
+    }
     // --- END DEBUGGING LOGS ---
 
-    // 1. Check authentication more robustly
-    // context.auth should contain the user's authentication information.
-    // If it's missing or doesn't have uid/token, the user is not properly authenticated
-    // for this callable function.
-    if (!context.auth || !context.auth.uid || !context.auth.token) {
-        console.error("Authentication context or token missing for callable function. context.auth:", context.auth);
+    // 1. Lấy ID Token từ Authorization header hoặc từ data payload
+    let idToken;
+    if (context.rawRequest && context.rawRequest.headers && context.rawRequest.headers.authorization) {
+        const authHeader = context.rawRequest.headers.authorization;
+        if (authHeader.startsWith('Bearer ')) {
+            idToken = authHeader.substring(7); // Lấy phần token sau 'Bearer '
+            console.log("ID Token found in Authorization header. (First 20 chars):", idToken.substring(0, 20) + "...");
+        }
+    }
+
+    // Fallback to data.idToken if not found in header (less reliable for callable functions)
+    if (!idToken && data.idToken) {
+        idToken = data.idToken;
+        console.log("ID Token found in data payload (fallback). (First 20 chars):", idToken.substring(0, 20) + "...");
+    }
+
+    if (!idToken) {
+        console.error("ID Token missing in callable function data. (After all extraction attempts)");
         throw new functions.https.HttpsError(
             'unauthenticated',
-            'Người dùng chưa được xác thực hoặc token không hợp lệ.'
+            'Token xác thực bị thiếu.'
         );
     }
 
-    const currentUserId = context.auth.uid;
-    const userRole = context.auth.token.role; // Get the custom claim role
+    let decodedToken;
+    try {
+        // Xác minh ID Token thủ công
+        decodedToken = await admin.auth().verifyIdToken(idToken);
+        console.log("ID Token verified successfully. Decoded token UID:", decodedToken.uid);
+        console.log("Decoded token Role:", decodedToken.role);
+    } catch (error) {
+        console.error("Error verifying ID Token:", error.code, error.message); // Log error code and message
+        throw new functions.https.HttpsError(
+            'unauthenticated',
+            'Token xác thực không hợp lệ hoặc đã hết hạn.',
+            error.message // Truyền thông báo lỗi chi tiết hơn từ Firebase Auth
+        );
+    }
 
-    // 2. Validate input data
-    const { userId, collectionName, requestId, type } = data;
+    // Sử dụng thông tin từ decodedToken
+    const currentUserId = decodedToken.uid;
+    const userRole = decodedToken.role; // Lấy custom claim 'role' từ token
 
-    if (!userId || !collectionName || !requestId || !type) {
-        // Log detailed missing info for debugging
-        console.error("Missing information in request data:", { userId, collectionName, requestId, type });
+    // 2. Validate input data from 'data' payload
+    const userIdFromClient = data.userId; // userId được gửi từ client trong data payload
+    const collectionName = data.collectionName;
+    const requestId = data.requestId;
+    const type = data.type;
+
+    if (!userIdFromClient || !collectionName || !requestId || !type) {
+        console.error("Missing information in request data:", { userIdFromClient, collectionName, requestId, type });
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Thiếu thông tin yêu cầu (userId, collectionName, requestId, type).'
+        );
+    }
+
+    // Đảm bảo userId trong data khớp với userId từ token để tránh giả mạo
+    if (userIdFromClient !== currentUserId) {
+        console.error("User ID in request data does not match authenticated user ID.", { requestUserId: userIdFromClient, authenticatedUserId: currentUserId });
+        throw new functions.https.HttpsError(
+            'permission-denied',
+            'Bạn không được phép thực hiện hành động này cho người dùng khác.'
         );
     }
 
@@ -85,8 +130,8 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
             'Cấu hình dự án Firebase bị thiếu.'
         );
     }
-    const requestRef = db.doc(`artifacts/${app_id}/users/${userId}/${collectionName}/${requestId}`);
-    console.log("Constructed Firestore path:", `artifacts/${app_id}/users/${userId}/${collectionName}/${requestId}`);
+    const requestRef = db.doc(`artifacts/${app_id}/users/${userIdFromClient}/${collectionName}/${requestId}`);
+    console.log("Constructed Firestore path:", `artifacts/${app_id}/users/${userIdFromClient}/${collectionName}/${requestId}`);
 
 
     try {
