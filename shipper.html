@@ -418,7 +418,7 @@
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'shipper_request') {
-                details = `Từ: ${request.pickup}<br>Đến: ${request.delivery}<br>Gói: ${request.package}`;
+                details = `Từ: ${request.pickup}<br>Đến: ${req.delivery}<br>Gói: ${req.package}`;
                 updateOptions = `
                     <option value="Shipper đang đến lấy hàng" ${request.status === 'Shipper đang đến lấy hàng' ? 'selected' : ''}>Đang đến lấy hàng</option>
                     <option value="Đang giao hàng" ${request.status === 'Đang giao hàng' ? 'selected' : ''}>Đang giao hàng</option>
@@ -495,27 +495,38 @@
         // Function to handle accepting a request
         async function acceptRequest(userId, collectionName, requestId, type) {
             try {
-                const requestRef = doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, requestId);
-                let updateData = {};
+                // Get the user's ID token to send to the Cloud Function
+                const idToken = await auth.currentUser.getIdToken();
 
-                // Set status and assign the current shipper/driver's ID
-                if (type === 'food_order' || type === 'shipper_request') {
-                    updateData = {
-                        status: 'Đã gán shipper',
-                        assignedShipperId: currentShipperUserId
-                    };
-                } else if (type === 'ride_request') {
-                    updateData = {
-                        status: 'Đã gán tài xế',
-                        assignedDriverId: currentShipperUserId
-                    };
+                // Define the Cloud Function endpoint URL
+                // Replace YOUR_REGION with your Cloud Function's region (e.g., us-central1)
+                // Replace YOUR_PROJECT_ID with your Firebase project ID
+                const acceptRequestFunctionUrl = `https://YOUR_REGION-YOUR_PROJECT_ID.cloudfunctions.net/acceptRequest`;
+
+                const response = await fetch(acceptRequestFunctionUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}` // Send the ID token for authentication
+                    },
+                    body: JSON.stringify({
+                        userId: userId,
+                        collectionName: collectionName,
+                        requestId: requestId,
+                        type: type
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage("Thành công", result.message);
+                } else {
+                    showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${result.error || 'Lỗi không xác định.'}`);
+                    console.error("Lỗi từ Cloud Function:", result.error);
                 }
-
-                await updateDoc(requestRef, updateData);
-                showMessage("Thành công", "Bạn đã chấp nhận yêu cầu này. Yêu cầu đã được chuyển vào mục 'Yêu cầu của tôi'.");
-                // The onSnapshot listeners will automatically update the UI
             } catch (error) {
-                console.error("Lỗi khi chấp nhận yêu cầu:", error);
+                console.error("Lỗi khi gọi Cloud Function:", error);
                 showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${error.message}`);
             }
         }
