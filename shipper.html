@@ -127,6 +127,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collectionGroup, query, onSnapshot, doc, updateDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js"; // Import getFunctions and httpsCallable
 
         // Firebase Configuration: MUST BE THE SAME AS YOUR MAIN APP'S CONFIG
         // Replace 'hieu-nguyen-cf05b' with your actual Firebase Project ID
@@ -145,6 +146,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+        const functions = getFunctions(app, "us-central1"); // Initialize Cloud Functions, specify region
 
         let currentShipperUser = null;
         let currentShipperUserId = null;
@@ -495,40 +497,29 @@
         // Function to handle accepting a request
         async function acceptRequest(userId, collectionName, requestId, type) {
             try {
-                // Get the user's ID token to send to the Cloud Function
-                const idToken = await auth.currentUser.getIdToken();
-
-                // Define the Cloud Function endpoint URL
-                const acceptRequestFunctionUrl = `https://us-central1-hieu-nguyen-cf05b.cloudfunctions.net/acceptRequest`;
+                // Get a reference to the callable function
+                const callAcceptRequest = httpsCallable(functions, 'acceptRequest');
 
                 // Log the data being sent to the Cloud Function for debugging
                 console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type });
 
-                const response = await fetch(acceptRequestFunctionUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${idToken}` // Send the ID token for authentication
-                    },
-                    body: JSON.stringify({
-                        userId: userId,
-                        collectionName: collectionName,
-                        requestId: requestId,
-                        type: type
-                    })
+                // Call the function with the data
+                const result = await callAcceptRequest({
+                    userId: userId,
+                    collectionName: collectionName,
+                    requestId: requestId,
+                    type: type
                 });
 
-                const result = await response.json();
-
-                if (response.ok) {
-                    showMessage("Thành công", result.message);
-                } else {
-                    showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${result.error || result.message || 'Lỗi không xác định.'}`);
-                    console.error("Lỗi từ Cloud Function:", result); // Log full error object
-                }
+                // The result.data contains the response from the Cloud Function
+                showMessage("Thành công", result.data.message);
             } catch (error) {
                 console.error("Lỗi khi gọi Cloud Function:", error);
-                showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${error.message}`);
+                let errorMessage = `Không thể chấp nhận yêu cầu: ${error.message}`;
+                if (error.code) {
+                    errorMessage = `Lỗi (${error.code}): ${error.message}`;
+                }
+                showMessage("Lỗi", errorMessage);
             }
         }
 

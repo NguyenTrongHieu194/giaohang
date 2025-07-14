@@ -2,7 +2,6 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 
 // Initialize Firebase Admin SDK if not already initialized
-// This check prevents re-initialization in development environments
 if (!admin.apps.length) {
     admin.initializeApp();
 }
@@ -16,6 +15,12 @@ const db = admin.firestore();
  * and updates its status.
  */
 exports.acceptRequest = functions.https.onCall(async (data, context) => {
+    // --- START DEBUGGING LOGS ---
+    console.log("Cloud Function received data:", data);
+    console.log("Cloud Function context.auth:", context.auth);
+    console.log("Cloud Function app.id from config:", functions.config().app.id);
+    // --- END DEBUGGING LOGS ---
+
     // 1. Check authentication
     if (!context.auth) {
         throw new functions.https.HttpsError(
@@ -31,6 +36,8 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
     const { userId, collectionName, requestId, type } = data;
 
     if (!userId || !collectionName || !requestId || !type) {
+        // Log detailed missing info for debugging
+        console.error("Missing information:", { userId, collectionName, requestId, type });
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Thiếu thông tin yêu cầu (userId, collectionName, requestId, type).'
@@ -40,6 +47,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
     // Ensure the collectionName is one of the allowed types for safety
     const allowedCollections = ['orders', 'shipper_requests', 'ride_requests'];
     if (!allowedCollections.includes(collectionName)) {
+        console.error("Invalid collection name received:", collectionName);
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Tên collection không hợp lệ.'
@@ -48,19 +56,32 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
 
     // 3. Validate user role based on request type
     if ((type === 'food_order' || type === 'shipper_request') && userRole !== 'shipper') {
+        console.error("Permission denied: User role", userRole, "cannot accept type", type);
         throw new functions.https.HttpsError(
             'permission-denied',
             'Bạn không có quyền shipper để chấp nhận yêu cầu này.'
         );
     }
     if (type === 'ride_request' && userRole !== 'driver') {
+        console.error("Permission denied: User role", userRole, "cannot accept type", type);
         throw new functions.https.HttpsError(
             'permission-denied',
             'Bạn không có quyền tài xế để chấp nhận yêu cầu này.'
         );
     }
 
-    const requestRef = db.doc(`artifacts/${functions.config().app.id}/users/${userId}/${collectionName}/${requestId}`);
+    // Construct the document reference path
+    const app_id = functions.config().app.id;
+    if (!app_id) {
+        console.error("Firebase app ID is not configured in Cloud Functions runtime config.");
+        throw new functions.https.HttpsError(
+            'internal',
+            'Cấu hình ứng dụng Firebase bị thiếu.'
+        );
+    }
+    const requestRef = db.doc(`artifacts/${app_id}/users/${userId}/${collectionName}/${requestId}`);
+    console.log("Constructed Firestore path:", `artifacts/${app_id}/users/${userId}/${collectionName}/${requestId}`);
+
 
     try {
         // Use a transaction to ensure atomicity: read, then conditionally update
@@ -68,6 +89,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
             const requestDoc = await transaction.get(requestRef);
 
             if (!requestDoc.exists) {
+                console.error("Request document not found:", requestRef.path);
                 throw new functions.https.HttpsError(
                     'not-found',
                     'Yêu cầu không tồn tại.'
@@ -75,6 +97,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
             }
 
             const currentData = requestDoc.data();
+            console.log("Current document data:", currentData);
 
             // Check if the request is already assigned to someone else
             let assignedField = '';
@@ -88,6 +111,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
             }
 
             if (currentData[assignedField] && currentData[assignedField] !== currentUserId) {
+                console.error("Request already assigned to another user:", currentData[assignedField]);
                 throw new functions.https.HttpsError(
                     'already-exists', // Using already-exists to indicate it's taken
                     'Yêu cầu này đã được gán cho một người khác.'
@@ -100,6 +124,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
                 status: assignedStatus,
                 [assignedField]: currentUserId // Use computed property name for dynamic field
             };
+            console.log("Updating document with data:", updateData);
 
             transaction.update(requestRef, updateData);
         });
