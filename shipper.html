@@ -127,6 +127,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collectionGroup, query, onSnapshot, doc, updateDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js"; // Import getFunctions and httpsCallable
 
         // Firebase Configuration: MUST BE THE SAME AS YOUR MAIN APP'S CONFIG
         // Replace 'hieu-nguyen-cf05b' with your actual Firebase Project ID
@@ -145,6 +146,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+        const functions = getFunctions(app, 'us-central1'); // Initialize Firebase Functions
 
         let currentShipperUser = null;
         let currentShipperUserId = null;
@@ -259,8 +261,7 @@
             if (currentShipperRole === 'shipper') {
                 const ordersQuery = query(
                     collectionGroup(db, 'orders'),
-                    // Re-added where clause to match Firestore rules
-                    where('status', 'in', ['Đang tìm shipper', 'Đã gán shipper', 'Shipper đang đến lấy hàng', 'Đang giao hàng'])
+                    where('type', '==', 'food_order') // Re-added where('type', '==', 'food_order')
                 );
                 onSnapshot(ordersQuery, (snapshot) => {
                     const orders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -273,8 +274,7 @@
                 // Listen for all shipper requests (shipper_request) - relevant for 'shipper' role
                 const shipperRequestsQuery = query(
                     collectionGroup(db, 'shipper_requests'),
-                    // Re-added where clause to match Firestore rules
-                    where('status', 'in', ['Đang tìm shipper', 'Đã gán shipper', 'Shipper đang đến lấy hàng', 'Đang giao hàng'])
+                    where('type', '==', 'shipper_request') // Re-added where('type', '==', 'shipper_request')
                 );
                 onSnapshot(shipperRequestsQuery, (snapshot) => {
                     const shipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -290,8 +290,7 @@
             if (currentShipperRole === 'driver') {
                 const rideRequestsQuery = query(
                     collectionGroup(db, 'ride_requests'),
-                    // Re-added where clause to match Firestore rules
-                    where('status', 'in', ['Đang tìm tài xế', 'Đã gán tài xế', 'Tài xế đang đến đón', 'Đang trên đường'])
+                    where('type', '==', 'ride_request') // Re-added where('type', '==', 'ride_request')
                 );
                 onSnapshot(rideRequestsQuery, (snapshot) => {
                     const rideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -428,7 +427,7 @@
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'ride_request') {
-                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${request.vehicle}`;
+                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${req.vehicle}`;
                 updateOptions = `
                     <option value="Tài xế đang đến đón" ${request.status === 'Tài xế đang đến đón' ? 'selected' : ''}>Đang đến đón</option>
                     <option value="Đang trên đường" ${request.status === 'Đang trên đường' ? 'selected' : ''}>Đang trên đường</option>
@@ -498,24 +497,17 @@
         // Function to handle accepting a request
         async function acceptRequest(userId, collectionName, requestId, type) {
             try {
-                const requestRef = doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, requestId);
-                let updateData = {};
+                // Corrected: Use the 'functions' object initialized from getFunctions
+                const acceptRequestCallable = httpsCallable(functions, 'acceptRequest'); 
+                // Gửi trực tiếp các tham số, không cần bọc trong đối tượng 'data' nữa
+                const result = await acceptRequestCallable({
+                    userId: userId,
+                    collectionName: collectionName,
+                    requestId: requestId,
+                    type: type
+                });
 
-                // Set status and assign the current shipper/driver's ID
-                if (type === 'food_order' || type === 'shipper_request') {
-                    updateData = {
-                        status: 'Đã gán shipper',
-                        assignedShipperId: currentShipperUserId
-                    };
-                } else if (type === 'ride_request') {
-                    updateData = {
-                        status: 'Đã gán tài xế',
-                        assignedDriverId: currentShipperUserId
-                    };
-                }
-
-                await updateDoc(requestRef, updateData);
-                showMessage("Thành công", "Bạn đã chấp nhận yêu cầu này. Yêu cầu đã được chuyển vào mục 'Yêu cầu của tôi'.");
+                showMessage("Thành công", result.data.message);
                 // The onSnapshot listeners will automatically update the UI
             } catch (error) {
                 console.error("Lỗi khi chấp nhận yêu cầu:", error);
