@@ -257,10 +257,6 @@
                 return;
             }
 
-            // Clear previous listeners to avoid duplicates if loadRequests is called multiple times
-            // (though onAuthStateChanged should ideally prevent this for main listeners)
-            // For simplicity, we'll let onSnapshot manage its own re-subscription on query change.
-
             // 1. Listen for available requests (status 'Đang tìm...')
             if (currentShipperRole === 'shipper') {
                 // Orders available for shipper
@@ -306,16 +302,15 @@
             }
 
             // 2. Listen for requests assigned to the current shipper/driver (My Active Request)
-            // This query needs to check the assignedShipperId/assignedDriverId field
-            // and exclude completed/cancelled statuses.
+            // Removed 'not-in' filter from query to simplify security rules, filtering in JS instead.
             const myAssignedOrdersQuery = query(
                 collectionGroup(db, 'orders'),
-                where('assignedShipperId', '==', currentShipperUserId),
-                where('status', 'not-in', ['Đã hoàn thành', 'Đã hủy']) // Exclude completed/cancelled
+                where('assignedShipperId', '==', currentShipperUserId)
             );
             onSnapshot(myAssignedOrdersQuery, (snapshot) => {
                 const assignedOrders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                updateMyActiveRequestDisplay(assignedOrders.length > 0 ? assignedOrders[0] : null); // Only show one active request
+                const filteredAssignedOrders = assignedOrders.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
+                updateMyActiveRequestDisplay(filteredAssignedOrders.length > 0 ? filteredAssignedOrders[0] : null);
             }, (error) => {
                 console.error("Lỗi khi tải đơn hàng được gán:", error);
                 myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng được gán: ${error.message}</p>`;
@@ -323,12 +318,12 @@
 
             const myAssignedShipperRequestsQuery = query(
                 collectionGroup(db, 'shipper_requests'),
-                where('assignedShipperId', '==', currentShipperUserId),
-                where('status', 'not-in', ['Đã hoàn thành', 'Đã hủy'])
+                where('assignedShipperId', '==', currentShipperUserId)
             );
             onSnapshot(myAssignedShipperRequestsQuery, (snapshot) => {
                 const assignedShipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                updateMyActiveRequestDisplay(assignedShipperRequests.length > 0 ? assignedShipperRequests[0] : null);
+                const filteredAssignedShipperRequests = assignedShipperRequests.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
+                updateMyActiveRequestDisplay(filteredAssignedShipperRequests.length > 0 ? filteredAssignedShipperRequests[0] : null);
             }, (error) => {
                 console.error("Lỗi khi tải yêu cầu giao hàng được gán:", error);
                 myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu giao hàng được gán: ${error.message}</p>`;
@@ -336,12 +331,12 @@
 
             const myAssignedRideRequestsQuery = query(
                 collectionGroup(db, 'ride_requests'),
-                where('assignedDriverId', '==', currentShipperUserId),
-                where('status', 'not-in', ['Đã hoàn thành', 'Đã hủy'])
+                where('assignedDriverId', '==', currentShipperUserId)
             );
             onSnapshot(myAssignedRideRequestsQuery, (snapshot) => {
                 const assignedRideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                updateMyActiveRequestDisplay(assignedRideRequests.length > 0 ? assignedRideRequests[0] : null);
+                const filteredAssignedRideRequests = assignedRideRequests.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
+                updateMyActiveRequestDisplay(filteredAssignedRideRequests.length > 0 ? filteredAssignedRideRequests[0] : null);
             }, (error) => {
                 console.error("Lỗi khi tải yêu cầu gọi xe được gán:", error);
                 myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe được gán: ${error.message}</p>`;
@@ -603,6 +598,13 @@
 
         // Function to update the status of an active request
         async function updateRequestStatus(userId, collectionName, requestId, newStatus) {
+            console.log("Attempting to update request status:");
+            console.log("  Customer userId:", userId);
+            console.log("  Collection Name:", collectionName);
+            console.log("  Request ID:", requestId);
+            console.log("  New Status:", newStatus);
+            console.log("  Current Shipper User ID:", currentShipperUserId);
+
             try {
                 const requestRef = doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, requestId);
                 await updateDoc(requestRef, { status: newStatus });
