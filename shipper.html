@@ -146,7 +146,8 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const functions = getFunctions(app, 'us-central1'); // Initialize Firebase Functions
+        // Initialize Cloud Functions, specify region
+        const functions = getFunctions(app, "us-central1"); 
 
         let currentShipperUser = null;
         let currentShipperUserId = null;
@@ -182,6 +183,7 @@
                 currentShipperUser = user;
                 currentShipperUserId = user.uid;
                 // Force refresh token to get the latest custom claims (important after assigning roles)
+                // This is crucial for the Cloud Function to receive the up-to-date claims.
                 const idTokenResult = await user.getIdTokenResult(true);
                 currentShipperRole = idTokenResult.claims.role; // Get the assigned role
 
@@ -550,6 +552,14 @@
             try {
                 // Use httpsCallable for Firebase Functions
                 const acceptRequestCallable = httpsCallable(functions, 'acceptRequest');
+
+                // DO NOT explicitly pass the ID token here. httpsCallable handles it automatically.
+                // const idToken = await auth.currentUser.getIdToken(); // This line is not needed.
+
+                // Log the data being sent to the Cloud Function for debugging
+                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type }); // Removed idToken from log
+
+                // Call the function with the data
                 const result = await acceptRequestCallable({
                     userId: userId,
                     collectionName: collectionName,
@@ -557,6 +567,7 @@
                     type: type
                 });
 
+                // The result.data contains the response from the Cloud Function
                 showMessage("Thành công", result.data.message);
                 console.log("Client: Cloud Function response:", result.data.message);
             } catch (error) {
