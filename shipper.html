@@ -561,7 +561,9 @@
                 console.log("Client: Cloud Function response:", result.data.message);
             } catch (error) {
                 console.error("Client: Lỗi khi gọi Cloud Function acceptRequest:", error);
-                showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${error.message}`);
+                // Cải thiện thông báo lỗi để hiển thị mã lỗi nếu có
+                const errorMessage = error.message || 'Lỗi không xác định.';
+                showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${errorMessage}`);
             }
         }
 
