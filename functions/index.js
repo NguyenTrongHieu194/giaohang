@@ -16,7 +16,7 @@ const db = admin.firestore();
  */
 exports.acceptRequest = functions.https.onCall(async (data, context) => {
     // --- START DEBUGGING LOGS ---
-    console.log("Cloud Function received data:", data);
+    console.log("Cloud Function received raw data parameter:", data); // Log the raw data parameter
     console.log("Full context object:", JSON.stringify(context, null, 2));
     console.log("Cloud Function GCLOUD_PROJECT env var:", process.env.GCLOUD_PROJECT);
     console.log("Context Auth Status (for debug):", context.auth ? "Present" : "Missing");
@@ -26,44 +26,42 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
     }
     // --- END DEBUGGING LOGS ---
 
-    // Lấy ID Token từ data payload (đã được gửi từ client)
-    let idToken = data.idToken;
-
-    if (!idToken) {
-        console.error("ID Token missing in callable function data. (After all extraction attempts)");
+    // 1. Check if user is authenticated via context.auth (this is the standard way for callable functions)
+    // Dựa trên nhật ký, context.auth đã VALID, nên chúng ta sẽ tin tưởng nó.
+    if (!context.auth) {
+        console.error("Authentication context missing. User is not authenticated.");
         throw new functions.https.HttpsError(
             'unauthenticated',
-            'Token xác thực bị thiếu.'
+            'Yêu cầu phải được xác thực.'
         );
     }
 
-    let decodedToken;
-    try {
-        // Xác minh ID Token thủ công
-        decodedToken = await admin.auth().verifyIdToken(idToken);
-        console.log("ID Token verified successfully. Decoded token UID:", decodedToken.uid);
-        console.log("Decoded token Role:", decodedToken.role);
-    } catch (error) {
-        console.error("Error verifying ID Token:", error.code, error.message);
-        throw new functions.https.HttpsError(
-            'unauthenticated',
-            'Token xác thực không hợp lệ hoặc đã hết hạn.',
-            error.message
-        );
-    }
-
-    // Sử dụng thông tin từ decodedToken (người dùng đã xác thực)
-    const currentUserId = decodedToken.uid;
-    const userRole = decodedToken.role; // Lấy custom claim 'role' từ token
+    // Sử dụng thông tin từ context.auth vì nó đã được xác minh bởi Firebase Callable Functions SDK
+    const currentUserId = context.auth.uid;
+    const userRole = context.auth.token.role; // Lấy custom claim 'role' từ token
 
     // 2. Validate input data from 'data' payload
-    const userIdFromClient = data.userId; // userId of the customer who placed the request
-    const collectionName = data.collectionName;
-    const requestId = data.requestId;
-    const type = data.type;
+    // Dựa trên nhật ký, payload thực sự từ client nằm trong data.data
+    const clientPayload = data.data; // Trích xuất payload thực sự
+
+    if (!clientPayload) {
+        console.error("Client payload 'data.data' is missing.");
+        throw new functions.https.HttpsError(
+            'invalid-argument',
+            'Thiếu dữ liệu payload từ client.'
+        );
+    }
+
+    const userIdFromClient = clientPayload.userId; // userId của khách hàng đã tạo yêu cầu
+    const collectionName = clientPayload.collectionName;
+    const requestId = clientPayload.requestId;
+    const type = clientPayload.type;
+
+    // Loại bỏ việc xác minh idToken thủ công vì context.auth đã VALID
+    // và chúng ta đang dựa vào xác minh nội bộ của hàm callable.
 
     if (!userIdFromClient || !collectionName || !requestId || !type) {
-        console.error("Missing information in request data:", { userIdFromClient, collectionName, requestId, type });
+        console.error("Missing information in client payload:", { userIdFromClient, collectionName, requestId, type });
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Thiếu thông tin yêu cầu (userId, collectionName, requestId, type).'
