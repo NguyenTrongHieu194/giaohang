@@ -56,8 +56,8 @@
         .modal-content {
             background-color: white;
             padding: 2rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
             max-width: 400px;
             width: 90%;
             text-align: center;
@@ -127,10 +127,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collectionGroup, query, onSnapshot, doc, updateDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js"; // Import getFunctions and httpsCallable
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
 
         // Firebase Configuration: MUST BE THE SAME AS YOUR MAIN APP'S CONFIG
-        // Replace 'hieu-nguyen-cf05b' with your actual Firebase Project ID
         const appId = 'hieu-nguyen-cf05b'; // Replace with your Firebase Project ID
         const firebaseConfig = {
             apiKey: "AIzaSyCv4KdNFVQKjKqT5z9JBm88oBLDwpH_rfI",
@@ -151,7 +150,9 @@
 
         let currentShipperUser = null;
         let currentShipperUserId = null;
-        let currentShipperRole = null; // Stores the custom claim role: 'shipper' or 'driver'
+        // Thay đổi để lưu trữ các cờ vai trò riêng biệt
+        let isCurrentUserShipper = false;
+        let isCurrentUserDriver = false;
         let activeRequest = null; // Stores the request currently being handled by this shipper/driver
 
         // Get references to UI elements
@@ -185,10 +186,12 @@
                 // Force refresh token to get the latest custom claims (important after assigning roles)
                 // This is crucial for the Cloud Function to receive the up-to-date claims.
                 const idTokenResult = await user.getIdTokenResult(true);
-                currentShipperRole = idTokenResult.claims.role; // Get the assigned role
+                // Cập nhật cách lấy vai trò: kiểm tra các cờ isShipper và isDriver
+                isCurrentUserShipper = idTokenResult.claims.isShipper === true;
+                isCurrentUserDriver = idTokenResult.claims.isDriver === true;
 
-                // Check if the user has a valid 'shipper' or 'driver' role
-                if (currentShipperRole === 'shipper' || currentShipperRole === 'driver') {
+                // Kiểm tra xem người dùng có bất kỳ vai trò hợp lệ nào không
+                if (isCurrentUserShipper || isCurrentUserDriver) {
                     loginSection.classList.add('hidden'); // Hide login form
                     dashboardSection.classList.remove('hidden'); // Show dashboard
                     loadRequests(); // Load relevant requests for this shipper/driver
@@ -205,7 +208,8 @@
                 dashboardSection.classList.add('hidden');
                 currentShipperUser = null;
                 currentShipperUserId = null;
-                currentShipperRole = null;
+                isCurrentUserShipper = false;
+                isCurrentUserDriver = false;
                 activeRequest = null; // Clear any active request data
             }
         });
@@ -254,13 +258,13 @@
         // --- Data Loading and Display ---
         // Function to load requests relevant to the current shipper/driver
         function loadRequests() {
-            if (!currentShipperUserId || !currentShipperRole) {
+            if (!currentShipperUserId || (!isCurrentUserShipper && !isCurrentUserDriver)) {
                 // Do not load requests if user is not authenticated or role is not set
                 return;
             }
 
             // 1. Listen for available requests (status 'Đang tìm...')
-            if (currentShipperRole === 'shipper') {
+            if (isCurrentUserShipper) {
                 // Orders available for shipper
                 const availableOrdersQuery = query(
                     collectionGroup(db, 'orders'),
@@ -288,7 +292,7 @@
                 });
             }
 
-            if (currentShipperRole === 'driver') {
+            if (isCurrentUserDriver) {
                 // Ride requests available for driver
                 const availableRideRequestsQuery = query(
                     collectionGroup(db, 'ride_requests'),
@@ -305,45 +309,49 @@
 
             // 2. Listen for requests assigned to the current shipper/driver (My Active Request)
             // Removed 'not-in' filter from query to simplify security rules, filtering in JS instead.
-            const myAssignedOrdersQuery = query(
-                collectionGroup(db, 'orders'),
-                where('assignedShipperId', '==', currentShipperUserId)
-            );
-            onSnapshot(myAssignedOrdersQuery, (snapshot) => {
-                const assignedOrders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                const filteredAssignedOrders = assignedOrders.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
-                // Pass the first found active request, or null if none
-                updateMyActiveRequestDisplay(filteredAssignedOrders.length > 0 ? filteredAssignedOrders[0] : null);
-            }, (error) => {
-                console.error("Lỗi khi tải đơn hàng được gán:", error);
-                myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng được gán: ${error.message}</p>`;
-            });
+            if (isCurrentUserShipper) {
+                const myAssignedOrdersQuery = query(
+                    collectionGroup(db, 'orders'),
+                    where('assignedShipperId', '==', currentShipperUserId)
+                );
+                onSnapshot(myAssignedOrdersQuery, (snapshot) => {
+                    const assignedOrders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                    const filteredAssignedOrders = assignedOrders.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
+                    // Pass the first found active request, or null if none
+                    updateMyActiveRequestDisplay(filteredAssignedOrders.length > 0 ? filteredAssignedOrders[0] : null);
+                }, (error) => {
+                    console.error("Lỗi khi tải đơn hàng được gán:", error);
+                    myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng được gán: ${error.message}</p>`;
+                });
 
-            const myAssignedShipperRequestsQuery = query(
-                collectionGroup(db, 'shipper_requests'),
-                where('assignedShipperId', '==', currentShipperUserId)
-            );
-            onSnapshot(myAssignedShipperRequestsQuery, (snapshot) => {
-                const assignedShipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                const filteredAssignedShipperRequests = assignedShipperRequests.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
-                updateMyActiveRequestDisplay(filteredAssignedShipperRequests.length > 0 ? filteredAssignedShipperRequests[0] : null);
-            }, (error) => {
-                console.error("Lỗi khi tải yêu cầu giao hàng được gán:", error);
-                myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu giao hàng được gán: ${error.message}</p>`;
-            });
+                const myAssignedShipperRequestsQuery = query(
+                    collectionGroup(db, 'shipper_requests'),
+                    where('assignedShipperId', '==', currentShipperUserId)
+                );
+                onSnapshot(myAssignedShipperRequestsQuery, (snapshot) => {
+                    const assignedShipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                    const filteredAssignedShipperRequests = assignedShipperRequests.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
+                    updateMyActiveRequestDisplay(filteredAssignedShipperRequests.length > 0 ? filteredAssignedShipperRequests[0] : null);
+                }, (error) => {
+                    console.error("Lỗi khi tải yêu cầu giao hàng được gán:", error);
+                    myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu giao hàng được gán: ${error.message}</p>`;
+                });
+            }
 
-            const myAssignedRideRequestsQuery = query(
-                collectionGroup(db, 'ride_requests'),
-                where('assignedDriverId', '==', currentShipperUserId)
-            );
-            onSnapshot(myAssignedRideRequestsQuery, (snapshot) => {
-                const assignedRideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                const filteredAssignedRideRequests = assignedRideRequests.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
-                updateMyActiveRequestDisplay(filteredAssignedRideRequests.length > 0 ? filteredAssignedRideRequests[0] : null);
-            }, (error) => {
-                console.error("Lỗi khi tải yêu cầu gọi xe được gán:", error);
-                myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe được gán: ${error.message}</p>`;
-            });
+            if (isCurrentUserDriver) {
+                const myAssignedRideRequestsQuery = query(
+                    collectionGroup(db, 'ride_requests'),
+                    where('assignedDriverId', '==', currentShipperUserId)
+                );
+                onSnapshot(myAssignedRideRequestsQuery, (snapshot) => {
+                    const assignedRideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                    const filteredAssignedRideRequests = assignedRideRequests.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
+                    updateMyActiveRequestDisplay(filteredAssignedRideRequests.length > 0 ? filteredAssignedRideRequests[0] : null);
+                }, (error) => {
+                    console.error("Lỗi khi tải yêu cầu gọi xe được gán:", error);
+                    myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe được gán: ${error.message}</p>`;
+                });
+            }
         }
 
         let availableRequestsData = []; // Stores all available requests
@@ -360,9 +368,9 @@
             const filteredAvailable = availableRequestsData.filter(req =>
                 !activeRequest && // Only show available if no active request
                 (
-                    (req.type === 'food_order' && req.status === 'Đang tìm shipper' && !req.assignedShipperId && currentShipperRole === 'shipper') ||
-                    (req.type === 'shipper_request' && req.status === 'Đang tìm shipper' && !req.assignedShipperId && currentShipperRole === 'shipper') ||
-                    (req.type === 'ride_request' && req.status === 'Đang tìm tài xế' && !req.assignedDriverId && currentShipperRole === 'driver')
+                    (req.type === 'food_order' && req.status === 'Đang tìm shipper' && !req.assignedShipperId && isCurrentUserShipper) ||
+                    (req.type === 'shipper_request' && req.status === 'Đang tìm shipper' && !req.assignedShipperId && isCurrentUserShipper) ||
+                    (req.type === 'ride_request' && req.status === 'Đang tìm tài xế' && !req.assignedDriverId && isCurrentUserDriver)
                 )
             );
 

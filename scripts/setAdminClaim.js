@@ -14,20 +14,14 @@ admin.initializeApp({
 // =====================================================================
 
 // 1. THAY THẾ UID NÀY BẰNG UID CỦA NGƯỜI DÙNG BẠN MUỐN CẤP QUYỀN
-const targetUid = 'sle8v3RjQKghyo4Tw0vfGe57MYA3'; // UID của shipper/tài xế
+const targetUid = 'sle8v3RjQKghyo4Tw0vfGe57MYA3'; // UID của shipper/tài xế (Thay thế bằng UID thực của tài khoản shipper/tài xế của bạn)
 
 // 2. ĐỊNH NGHĨA CUSTOM CLAIMS BẠN MUỐN GÁN
-// Chọn MỘT trong các cấu hình dưới đây và bỏ comment dòng đó.
-// Đảm bảo chỉ có MỘT dòng được bỏ comment cho 'claimsToSet'.
+// Để gán quyền SHIPPER VÀ TÀI XẾ:
+const claimsToSet = { isShipper: true, isDriver: true, role: 'multi_role' }; // Gán cả hai cờ và một vai trò tổng quát
 
 // Để gán quyền ADMIN:
-// const claimsToSet = { admin: true, role: 'admin' }; // Gán cả 'admin' và 'role' cho rõ ràng
-
-// Để gán quyền SHIPPER:
-const claimsToSet = { role: 'shipper' };
-
-// Để gán quyền TÀI XẾ:
-// const claimsToSet = { role: 'driver' };
+// const claimsToSet = { admin: true, role: 'admin' };
 
 // Để XÓA TẤT CẢ custom claims của người dùng (để trở lại là người dùng bình thường):
 // const claimsToSet = {};
