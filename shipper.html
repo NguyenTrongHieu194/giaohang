@@ -257,89 +257,142 @@
                 return;
             }
 
-            // Listen for all orders (food_order) - relevant for 'shipper' role
+            // Clear previous listeners to avoid duplicates if loadRequests is called multiple times
+            // (though onAuthStateChanged should ideally prevent this for main listeners)
+            // For simplicity, we'll let onSnapshot manage its own re-subscription on query change.
+
+            // 1. Listen for available requests (status 'Đang tìm...')
             if (currentShipperRole === 'shipper') {
-                const ordersQuery = query(
+                // Orders available for shipper
+                const availableOrdersQuery = query(
                     collectionGroup(db, 'orders'),
-                    where('type', '==', 'food_order') // Re-added where('type', '==', 'food_order')
+                    where('status', '==', 'Đang tìm shipper')
                 );
-                onSnapshot(ordersQuery, (snapshot) => {
+                onSnapshot(availableOrdersQuery, (snapshot) => {
                     const orders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                    updateRequestsDisplay(orders, 'orders');
+                    updateAvailableRequestsDisplay(orders, 'orders');
                 }, (error) => {
-                    console.error("Lỗi khi tải đơn hàng:", error);
-                    availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng: ${error.message}</p>`;
+                    console.error("Lỗi khi tải đơn hàng có sẵn:", error);
+                    // availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng có sẵn: ${error.message}</p>`; // Handled by updateAvailableRequestsDisplay
                 });
 
-                // Listen for all shipper requests (shipper_request) - relevant for 'shipper' role
-                const shipperRequestsQuery = query(
+                // Shipper requests available for shipper
+                const availableShipperRequestsQuery = query(
                     collectionGroup(db, 'shipper_requests'),
-                    where('type', '==', 'shipper_request') // Re-added where('type', '==', 'shipper_request')
+                    where('status', '==', 'Đang tìm shipper')
                 );
-                onSnapshot(shipperRequestsQuery, (snapshot) => {
+                onSnapshot(availableShipperRequestsQuery, (snapshot) => {
                     const shipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                    updateRequestsDisplay(shipperRequests, 'shipper_requests');
+                    updateAvailableRequestsDisplay(shipperRequests, 'shipper_requests');
                 }, (error) => {
-                    console.error("Lỗi khi tải yêu cầu giao hàng:", error);
-                    availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu giao hàng: ${error.message}</p>`;
+                    console.error("Lỗi khi tải yêu cầu giao hàng có sẵn:", error);
+                    // availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu giao hàng có sẵn: ${error.message}</p>`; // Handled by updateAvailableRequestsDisplay
                 });
             }
 
-
-            // Listen for all ride requests (ride_request) - relevant for 'driver' role
             if (currentShipperRole === 'driver') {
-                const rideRequestsQuery = query(
+                // Ride requests available for driver
+                const availableRideRequestsQuery = query(
                     collectionGroup(db, 'ride_requests'),
-                    where('type', '==', 'ride_request') // Re-added where('type', '==', 'ride_request')
+                    where('status', '==', 'Đang tìm tài xế')
                 );
-                onSnapshot(rideRequestsQuery, (snapshot) => {
+                onSnapshot(availableRideRequestsQuery, (snapshot) => {
                     const rideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
-                    updateRequestsDisplay(rideRequests, 'ride_requests');
+                    updateAvailableRequestsDisplay(rideRequests, 'ride_requests');
                 }, (error) => {
-                    console.error("Lỗi khi tải yêu cầu gọi xe:", error);
-                    availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe: ${error.message}</p>`;
+                    console.error("Lỗi khi tải yêu cầu gọi xe có sẵn:", error);
+                    // availableRequestsListDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe có sẵn: ${error.message}</p>`; // Handled by updateAvailableRequestsDisplay
                 });
             }
+
+            // 2. Listen for requests assigned to the current shipper/driver (My Active Request)
+            // This query needs to check the assignedShipperId/assignedDriverId field
+            // and exclude completed/cancelled statuses.
+            const myAssignedOrdersQuery = query(
+                collectionGroup(db, 'orders'),
+                where('assignedShipperId', '==', currentShipperUserId),
+                where('status', 'not-in', ['Đã hoàn thành', 'Đã hủy']) // Exclude completed/cancelled
+            );
+            onSnapshot(myAssignedOrdersQuery, (snapshot) => {
+                const assignedOrders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                updateMyActiveRequestDisplay(assignedOrders.length > 0 ? assignedOrders[0] : null); // Only show one active request
+            }, (error) => {
+                console.error("Lỗi khi tải đơn hàng được gán:", error);
+                myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải đơn hàng được gán: ${error.message}</p>`;
+            });
+
+            const myAssignedShipperRequestsQuery = query(
+                collectionGroup(db, 'shipper_requests'),
+                where('assignedShipperId', '==', currentShipperUserId),
+                where('status', 'not-in', ['Đã hoàn thành', 'Đã hủy'])
+            );
+            onSnapshot(myAssignedShipperRequestsQuery, (snapshot) => {
+                const assignedShipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                updateMyActiveRequestDisplay(assignedShipperRequests.length > 0 ? assignedShipperRequests[0] : null);
+            }, (error) => {
+                console.error("Lỗi khi tải yêu cầu giao hàng được gán:", error);
+                myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu giao hàng được gán: ${error.message}</p>`;
+            });
+
+            const myAssignedRideRequestsQuery = query(
+                collectionGroup(db, 'ride_requests'),
+                where('assignedDriverId', '==', currentShipperUserId),
+                where('status', 'not-in', ['Đã hoàn thành', 'Đã hủy'])
+            );
+            onSnapshot(myAssignedRideRequestsQuery, (snapshot) => {
+                const assignedRideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
+                updateMyActiveRequestDisplay(assignedRideRequests.length > 0 ? assignedRideRequests[0] : null);
+            }, (error) => {
+                console.error("Lỗi khi tải yêu cầu gọi xe được gán:", error);
+                myActiveRequestDiv.innerHTML = `<p class="text-red-500">Lỗi khi tải yêu cầu gọi xe được gán: ${error.message}</p>`;
+            });
         }
 
-        let allAvailableRequests = []; // Stores all requests the current user has read access to
+        let availableRequestsData = []; // Stores all available requests
 
-        // Function to update the combined list of requests and trigger rendering
-        function updateRequestsDisplay(newItems, collectionType) {
+        // Function to update the combined list of available requests and trigger rendering
+        function updateAvailableRequestsDisplay(newItems, collectionType) {
             // Remove old items of this collection type to avoid duplicates
-            allAvailableRequests = allAvailableRequests.filter(item => item.collectionRef.parent.id !== collectionType);
+            availableRequestsData = availableRequestsData.filter(item => item.collectionRef.parent.id !== collectionType);
             // Add the new items
-            allAvailableRequests = [...allAvailableRequests, ...newItems];
+            availableRequestsData = [...availableRequestsData, ...newItems];
 
-            // Separate requests into 'active' (assigned to me) and 'available' (waiting for assignment)
-            activeRequest = allAvailableRequests.find(req =>
-                (req.type === 'food_order' && req.assignedShipperId === currentShipperUserId && req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy') ||
-                (req.type === 'shipper_request' && req.assignedShipperId === currentShipperUserId && req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy') ||
-                (req.type === 'ride_request' && req.assignedDriverId === currentShipperUserId && req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy')
-            );
-
-            const availableForMe = allAvailableRequests.filter(req =>
+            // Filter out any requests that are already assigned to someone (in case of race conditions)
+            // Or if the current user already has an active request
+            const filteredAvailable = availableRequestsData.filter(req =>
                 !activeRequest && // Only show available if no active request
                 (
-                    (req.type === 'food_order' && req.status === 'Đang tìm shipper' && currentShipperRole === 'shipper') ||
-                    (req.type === 'shipper_request' && req.status === 'Đang tìm shipper' && currentShipperRole === 'shipper') ||
-                    (req.type === 'ride_request' && req.status === 'Đang tìm tài xế' && currentShipperRole === 'driver')
+                    (req.type === 'food_order' && req.status === 'Đang tìm shipper' && !req.assignedShipperId && currentShipperRole === 'shipper') ||
+                    (req.type === 'shipper_request' && req.status === 'Đang tìm shipper' && !req.assignedShipperId && currentShipperRole === 'shipper') ||
+                    (req.type === 'ride_request' && req.status === 'Đang tìm tài xế' && !req.assignedDriverId && currentShipperRole === 'driver')
                 )
             );
 
             // Sort available requests by time (newest first)
-            availableForMe.sort((a, b) => {
+            filteredAvailable.sort((a, b) => {
                 const timeA = new Date(a.requestTime || a.orderTime || 0);
                 const timeB = new Date(b.requestTime || b.orderTime || 0);
                 return timeB - timeA;
             });
 
-            renderAvailableRequests(availableForMe);
-            renderMyActiveRequest(activeRequest);
+            renderAvailableRequests(filteredAvailable);
+        }
+
+        // Function to update the single active request for the current shipper/driver
+        function updateMyActiveRequestDisplay(request) {
+            activeRequest = request; // Update the global activeRequest variable
+            renderMyActiveRequest(activeRequest); // Re-render the active request section
+            // Also re-render available requests, as they should hide if there's an active one
+            updateAvailableRequestsDisplay([], ''); // Pass empty array to clear available requests
         }
 
         // Function to render the list of available requests
         function renderAvailableRequests(requests) {
+            if (activeRequest) { // If there's an active request, hide available ones
+                availableRequestsListDiv.innerHTML = `<p class="text-gray-600 text-center">Bạn đang có một yêu cầu đang hoạt động. Hoàn thành để xem các yêu cầu khác.</p>`;
+                return;
+            }
+
             if (requests.length === 0) {
                 availableRequestsListDiv.innerHTML = `<p class="text-gray-600 text-center">Không có yêu cầu mới nào.</p>`;
                 return;
@@ -420,14 +473,14 @@
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'shipper_request') {
-                details = `Từ: ${request.pickup}<br>Đến: ${request.delivery}<br>Gói: ${request.package}`;
+                details = `Từ: ${request.pickup}<br>Đến: ${req.delivery}<br>Gói: ${req.package}`;
                 updateOptions = `
                     <option value="Shipper đang đến lấy hàng" ${request.status === 'Shipper đang đến lấy hàng' ? 'selected' : ''}>Đang đến lấy hàng</option>
                     <option value="Đang giao hàng" ${request.status === 'Đang giao hàng' ? 'selected' : ''}>Đang giao hàng</option>
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'ride_request') {
-                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${req.vehicle}`;
+                details = `Đón: ${request.pickup}<br>Trả: ${req.dropoff}<br>Xe: ${req.vehicle}`;
                 updateOptions = `
                     <option value="Tài xế đang đến đón" ${request.status === 'Tài xế đang đến đón' ? 'selected' : ''}>Đang đến đón</option>
                     <option value="Đang trên đường" ${request.status === 'Đang trên đường' ? 'selected' : ''}>Đang trên đường</option>
@@ -497,20 +550,39 @@
         // Function to handle accepting a request
         async function acceptRequest(userId, collectionName, requestId, type) {
             try {
-                // Corrected: Use the 'functions' object initialized from getFunctions
-                const acceptRequestCallable = httpsCallable(functions, 'acceptRequest'); 
-                // Gửi trực tiếp các tham số, không cần bọc trong đối tượng 'data' nữa
-                const result = await acceptRequestCallable({
-                    userId: userId,
-                    collectionName: collectionName,
-                    requestId: requestId,
-                    type: type
+                // Get the user's ID token to send to the Cloud Function
+                const idToken = await auth.currentUser.getIdToken();
+
+                // Define the Cloud Function endpoint URL
+                const acceptRequestFunctionUrl = `https://us-central1-hieu-nguyen-cf05b.cloudfunctions.net/acceptRequest`;
+
+                // Log the data being sent to the Cloud Function for debugging
+                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type });
+
+                const response = await fetch(acceptRequestFunctionUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}` // Send the ID token for authentication
+                    },
+                    body: JSON.stringify({
+                        userId: userId,
+                        collectionName: collectionName,
+                        requestId: requestId,
+                        type: type
+                    })
                 });
 
-                showMessage("Thành công", result.data.message);
-                // The onSnapshot listeners will automatically update the UI
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage("Thành công", result.message);
+                } else {
+                    showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${result.error || result.message || 'Lỗi không xác định.'}`);
+                    console.error("Lỗi từ Cloud Function:", result); // Log full error object
+                }
             } catch (error) {
-                console.error("Lỗi khi chấp nhận yêu cầu:", error);
+                console.error("Lỗi khi gọi Cloud Function:", error);
                 showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${error.message}`);
             }
         }
