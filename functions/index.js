@@ -14,20 +14,22 @@ const db = admin.firestore();
  * It assigns the current authenticated user (shipper/driver) to the request
  * and updates its status.
  */
-exports.acceptRequest = functions.https.onCall(async (data, context) => {
+exports.acceptRequest = functions.https.onCall(async (originalData, context) => { // Đổi tên data thành originalData
     // --- START DEBUGGING LOGS ---
-    console.log("Cloud Function received data:", data);
-    // Log the entire context object to inspect its structure
-    // We stringify it to ensure all properties are visible in logs, even nested ones.
+    console.log("Cloud Function received originalData:", originalData);
     console.log("Full context object:", JSON.stringify(context, null, 2)); 
     console.log("Cloud Function GCLOUD_PROJECT env var:", process.env.GCLOUD_PROJECT);
-    // Add this new log for context.auth status
     console.log("Context Auth Status (for debug):", context.auth ? "Present" : "Missing");
     if (context.auth) {
         console.log("Context Auth UID (for debug):", context.auth.uid);
         console.log("Context Auth Token (role) (for debug):", context.auth.token ? context.auth.token.role : "N/A");
     }
     // --- END DEBUGGING LOGS ---
+
+    // Lấy payload thực sự từ originalData.data
+    // Nếu originalData.data không tồn tại, có thể originalData chính là payload
+    const data = originalData.data || originalData; 
+    console.log("Extracted payload 'data':", data);
 
     // 1. Lấy ID Token từ Authorization header hoặc từ data payload
     let idToken;
@@ -39,10 +41,11 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
         }
     }
 
-    // Fallback to data.idToken if not found in header (less reliable for callable functions)
-    if (!idToken && data.idToken) {
+    // Fallback to data.idToken if not found in header
+    // Sử dụng 'data.idToken' vì 'data' bây giờ là payload đã được trích xuất
+    if (!idToken && data.idToken) { 
         idToken = data.idToken;
-        console.log("ID Token found in data payload (fallback). (First 20 chars):", idToken.substring(0, 20) + "...");
+        console.log("ID Token found in extracted payload 'data.idToken' (fallback). (First 20 chars):", idToken.substring(0, 20) + "...");
     }
 
     if (!idToken) {
@@ -60,26 +63,26 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
         console.log("ID Token verified successfully. Decoded token UID:", decodedToken.uid);
         console.log("Decoded token Role:", decodedToken.role);
     } catch (error) {
-        console.error("Error verifying ID Token:", error.code, error.message); // Log error code and message
+        console.error("Error verifying ID Token:", error.code, error.message); 
         throw new functions.https.HttpsError(
             'unauthenticated',
             'Token xác thực không hợp lệ hoặc đã hết hạn.',
-            error.message // Truyền thông báo lỗi chi tiết hơn từ Firebase Auth
+            error.message 
         );
     }
 
     // Sử dụng thông tin từ decodedToken
     const currentUserId = decodedToken.uid;
-    const userRole = decodedToken.role; // Lấy custom claim 'role' từ token
+    const userRole = decodedToken.role; 
 
-    // 2. Validate input data from 'data' payload
-    const userIdFromClient = data.userId; // userId được gửi từ client trong data payload
+    // 2. Validate input data from 'data' payload (payload đã được trích xuất)
+    const userIdFromClient = data.userId; 
     const collectionName = data.collectionName;
     const requestId = data.requestId;
     const type = data.type;
 
     if (!userIdFromClient || !collectionName || !requestId || !type) {
-        console.error("Missing information in request data:", { userIdFromClient, collectionName, requestId, type });
+        console.error("Missing information in extracted payload 'data':", { userIdFromClient, collectionName, requestId, type });
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Thiếu thông tin yêu cầu (userId, collectionName, requestId, type).'
@@ -164,7 +167,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
             if (currentData[assignedField] && currentData[assignedField] !== currentUserId) {
                 console.error("Request already assigned to another user:", currentData[assignedField]);
                 throw new functions.https.HttpsError(
-                    'already-exists', // Using already-exists to indicate it's taken
+                    'already-exists', 
                     'Yêu cầu này đã được gán cho một người khác.'
                 );
             }
@@ -173,7 +176,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
             // Perform the update
             const updateData = {
                 status: assignedStatus,
-                [assignedField]: currentUserId // Use computed property name for dynamic field
+                [assignedField]: currentUserId 
             };
             console.log("Updating document with data:", updateData);
 
@@ -184,7 +187,7 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
 
     } catch (error) {
         if (error instanceof functions.https.HttpsError) {
-            throw error; // Re-throw Firebase HttpsError
+            throw error; 
         }
         console.error("Lỗi khi chấp nhận yêu cầu trong Cloud Function:", error);
         throw new functions.https.HttpsError(
