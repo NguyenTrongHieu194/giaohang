@@ -548,16 +548,20 @@
 
         // Function to handle accepting a request
         async function acceptRequest(userId, collectionName, requestId, type) {
+            // Check if user is actually authenticated before calling the Cloud Function
+            if (!auth.currentUser) {
+                showMessage("Lỗi", "Bạn cần đăng nhập để chấp nhận yêu cầu.");
+                console.error("Client: Người dùng chưa đăng nhập khi cố gắng chấp nhận yêu cầu.");
+                return; // Stop execution if not authenticated
+            }
+
             console.log("Client: Calling acceptRequest Cloud Function with:", { userId, collectionName, requestId, type });
             try {
                 // Use httpsCallable for Firebase Functions
                 const acceptRequestCallable = httpsCallable(functions, 'acceptRequest');
 
-                // DO NOT explicitly pass the ID token here. httpsCallable handles it automatically.
-                // const idToken = await auth.currentUser.getIdToken(); // This line is not needed.
-
                 // Log the data being sent to the Cloud Function for debugging
-                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type }); // Removed idToken from log
+                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type });
 
                 // Call the function with the data
                 const result = await acceptRequestCallable({
