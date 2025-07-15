@@ -259,7 +259,8 @@
             if (currentShipperRole === 'shipper') {
                 const ordersQuery = query(
                     collectionGroup(db, 'orders'),
-                    where('status', 'in', ['Đang tìm shipper', 'Đã gán shipper', 'Shipper đang đến lấy hàng', 'Đang giao hàng']) // Filter by relevant statuses
+                    // Re-added where clause to match Firestore rules
+                    where('status', 'in', ['Đang tìm shipper', 'Đã gán shipper', 'Shipper đang đến lấy hàng', 'Đang giao hàng'])
                 );
                 onSnapshot(ordersQuery, (snapshot) => {
                     const orders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -272,7 +273,8 @@
                 // Listen for all shipper requests (shipper_request) - relevant for 'shipper' role
                 const shipperRequestsQuery = query(
                     collectionGroup(db, 'shipper_requests'),
-                    where('status', 'in', ['Đang tìm shipper', 'Đã gán shipper', 'Shipper đang đến lấy hàng', 'Đang giao hàng']) // Filter by relevant statuses
+                    // Re-added where clause to match Firestore rules
+                    where('status', 'in', ['Đang tìm shipper', 'Đã gán shipper', 'Shipper đang đến lấy hàng', 'Đang giao hàng'])
                 );
                 onSnapshot(shipperRequestsQuery, (snapshot) => {
                     const shipperRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
@@ -288,7 +290,8 @@
             if (currentShipperRole === 'driver') {
                 const rideRequestsQuery = query(
                     collectionGroup(db, 'ride_requests'),
-                    where('status', 'in', ['Đang tìm tài xế', 'Đã gán tài xế', 'Tài xế đang đến đón', 'Đang trên đường']) // Filter by relevant statuses
+                    // Re-added where clause to match Firestore rules
+                    where('status', 'in', ['Đang tìm tài xế', 'Đã gán tài xế', 'Tài xế đang đến đón', 'Đang trên đường'])
                 );
                 onSnapshot(rideRequestsQuery, (snapshot) => {
                     const rideRequests = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
