@@ -553,30 +553,3 @@
 </html>
 ```
 
-Bạn đã chọn một phần mã từ Canvas "Ứng dụng Shipper/Tài xế". Tôi đã cập nhật hàm `acceptRequest` trong Canvas đó để gửi `idToken` một cách rõ ràng trong payload của hàm callable.
-
-**Thay đổi đã thực hiện:**
-
-* Trong hàm `acceptRequest`, tôi đã thêm dòng `idToken: await auth.currentUser.getIdToken()` vào đối tượng payload được gửi tới Cloud Function `acceptRequestCallable`.
-
-**Các bước tiếp theo:**
-
-1.  **Lưu tệp `shipper.html`** với mã đã cập nhật này.
-2.  **Cập nhật lên GitHub Pages:**
-    * Mở Terminal trong VS Code và điều hướng đến thư mục gốc của dự án của bạn.
-    * Chạy các lệnh Git:
-        ```bash
-        git add .
-        git commit -m "Explicitly pass ID token in acceptRequest callable function"
-        git push origin main
-        ```
-    * Chờ GitHub Pages triển khai lại (thường mất vài phút).
-3.  **Xóa bộ nhớ cache của trình duyệt và truy cập lại `shipper.html`:**
-    * Đóng tất cả các tab trình duyệt liên quan.
-    * Mở lại trình duyệt (hoặc cửa sổ ẩn danh).
-    * **Xóa toàn bộ bộ nhớ cache và dữ liệu trang web** của trình duyệt.
-    * Truy cập lại URL `https://nguyentronghieu194.github.io/giaohang/shipper.html`.
-    * Đăng nhập lại bằng tài khoản shipper/tài xế của bạn.
-4.  **Kiểm tra lại console:** Thử chấp nhận một yêu cầu và kiểm tra nhật ký trong console của trình duyệt (F12) và nhật ký Cloud Function trong Firebase Console.
-
-Việc gửi `idToken` một cách rõ ràng trong payload sẽ giúp Cloud Function của bạn dễ dàng truy cập và xác minh token hơn, hy vọng sẽ giải quyết được lỗi `401 (Unauthorized)` n
