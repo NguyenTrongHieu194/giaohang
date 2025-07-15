@@ -127,6 +127,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collectionGroup, query, onSnapshot, doc, updateDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js"; // Import getFunctions and httpsCallable
 
         // Firebase Configuration: MUST BE THE SAME AS YOUR MAIN APP'S CONFIG
         // Replace 'hieu-nguyen-cf05b' with your actual Firebase Project ID
@@ -145,6 +146,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+        const functions = getFunctions(app, 'us-central1'); // Initialize Firebase Functions
 
         let currentShipperUser = null;
         let currentShipperUserId = null;
@@ -501,8 +503,8 @@
         // Function to handle accepting a request
         async function acceptRequest(userId, collectionName, requestId, type) {
             try {
-                // Call the Cloud Function to accept the request
-                const acceptRequestCallable = firebase.functions().httpsCallable('acceptRequest'); // Ensure this is correctly initialized
+                // Corrected: Use the 'functions' object initialized from getFunctions
+                const acceptRequestCallable = httpsCallable(functions, 'acceptRequest'); 
                 const result = await acceptRequestCallable({
                     userId: userId,
                     collectionName: collectionName,
