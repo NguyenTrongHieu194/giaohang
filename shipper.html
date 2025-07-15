@@ -310,6 +310,7 @@
             onSnapshot(myAssignedOrdersQuery, (snapshot) => {
                 const assignedOrders = snapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent.id, ...doc.data(), collectionRef: doc.ref }));
                 const filteredAssignedOrders = assignedOrders.filter(req => req.status !== 'Đã hoàn thành' && req.status !== 'Đã hủy');
+                // Pass the first found active request, or null if none
                 updateMyActiveRequestDisplay(filteredAssignedOrders.length > 0 ? filteredAssignedOrders[0] : null);
             }, (error) => {
                 console.error("Lỗi khi tải đơn hàng được gán:", error);
@@ -378,7 +379,8 @@
             activeRequest = request; // Update the global activeRequest variable
             renderMyActiveRequest(activeRequest); // Re-render the active request section
             // Also re-render available requests, as they should hide if there's an active one
-            updateAvailableRequestsDisplay([], ''); // Pass empty array to clear available requests
+            // We pass an empty array to ensure available requests are cleared if an active one exists
+            updateAvailableRequestsDisplay([], '');
         }
 
         // Function to render the list of available requests
@@ -449,7 +451,7 @@
 
         // Function to render the single active request for the current shipper/driver
         function renderMyActiveRequest(request) {
-            if (!request) {
+            if (!request) { // Handle case where no active request is found
                 myActiveRequestDiv.innerHTML = `<p class="text-gray-600 text-center">Bạn chưa có yêu cầu nào đang hoạt động.</p>`;
                 return;
             }
@@ -468,14 +470,14 @@
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'shipper_request') {
-                details = `Từ: ${request.pickup}<br>Đến: ${req.delivery}<br>Gói: ${req.package}`;
+                details = `Từ: ${request.pickup}<br>Đến: ${request.delivery}<br>Gói: ${request.package}`;
                 updateOptions = `
                     <option value="Shipper đang đến lấy hàng" ${request.status === 'Shipper đang đến lấy hàng' ? 'selected' : ''}>Đang đến lấy hàng</option>
                     <option value="Đang giao hàng" ${request.status === 'Đang giao hàng' ? 'selected' : ''}>Đang giao hàng</option>
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'ride_request') {
-                details = `Đón: ${request.pickup}<br>Trả: ${req.dropoff}<br>Xe: ${req.vehicle}`;
+                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${request.vehicle}`;
                 updateOptions = `
                     <option value="Tài xế đang đến đón" ${request.status === 'Tài xế đang đến đón' ? 'selected' : ''}>Đang đến đón</option>
                     <option value="Đang trên đường" ${request.status === 'Đang trên đường' ? 'selected' : ''}>Đang trên đường</option>
@@ -544,46 +546,28 @@
 
         // Function to handle accepting a request
         async function acceptRequest(userId, collectionName, requestId, type) {
+            console.log("Client: Calling acceptRequest Cloud Function with:", { userId, collectionName, requestId, type });
             try {
-                // Get the user's ID token to send to the Cloud Function
-                const idToken = await auth.currentUser.getIdToken();
-
-                // Define the Cloud Function endpoint URL
-                const acceptRequestFunctionUrl = `https://us-central1-hieu-nguyen-cf05b.cloudfunctions.net/acceptRequest`;
-
-                // Log the data being sent to the Cloud Function for debugging
-                console.log("Dữ liệu gửi đến Cloud Function:", { userId, collectionName, requestId, type });
-
-                const response = await fetch(acceptRequestFunctionUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${idToken}` // Send the ID token for authentication
-                    },
-                    body: JSON.stringify({
-                        userId: userId,
-                        collectionName: collectionName,
-                        requestId: requestId,
-                        type: type
-                    })
+                // Use httpsCallable for Firebase Functions
+                const acceptRequestCallable = httpsCallable(functions, 'acceptRequest');
+                const result = await acceptRequestCallable({
+                    userId: userId,
+                    collectionName: collectionName,
+                    requestId: requestId,
+                    type: type
                 });
 
-                const result = await response.json();
-
-                if (response.ok) {
-                    showMessage("Thành công", result.message);
-                } else {
-                    showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${result.error || result.message || 'Lỗi không xác định.'}`);
-                    console.error("Lỗi từ Cloud Function:", result); // Log full error object
-                }
+                showMessage("Thành công", result.data.message);
+                console.log("Client: Cloud Function response:", result.data.message);
             } catch (error) {
-                console.error("Lỗi khi gọi Cloud Function:", error);
+                console.error("Client: Lỗi khi gọi Cloud Function acceptRequest:", error);
                 showMessage("Lỗi", `Không thể chấp nhận yêu cầu: ${error.message}`);
             }
         }
 
         // Function to handle rejecting a request (currently just a message)
         async function rejectRequest(userId, collectionName, requestId) {
+            console.log("Client: Rejecting request:", { userId, collectionName, requestId });
             try {
                 // For now, we just show a message. In a real app, you might want to:
                 // 1. Revert the status to "Đang tìm..." if it was temporarily assigned
@@ -591,14 +575,14 @@
                 // 3. Keep a log of rejected requests
                 showMessage("Từ chối", "Bạn đã từ chối yêu cầu này. Yêu cầu sẽ vẫn hiển thị cho các shipper/tài xế khác.");
             } catch (error) {
-                console.error("Lỗi khi từ chối yêu cầu:", error);
+                console.error("Client: Lỗi khi từ chối yêu cầu:", error);
                 showMessage("Lỗi", `Không thể từ chối yêu cầu: ${error.message}`);
             }
         }
 
         // Function to update the status of an active request
         async function updateRequestStatus(userId, collectionName, requestId, newStatus) {
-            console.log("Attempting to update request status:");
+            console.log("Client: Attempting to update request status:");
             console.log("  Customer userId:", userId);
             console.log("  Collection Name:", collectionName);
             console.log("  Request ID:", requestId);
@@ -611,7 +595,7 @@
                 showMessage("Cập nhật trạng thái", `Trạng thái đã cập nhật thành "${newStatus}".`);
                 // The onSnapshot listeners will automatically update the UI
             } catch (error) {
-                console.error("Lỗi khi cập nhật trạng thái:", error);
+                console.error("Client: Lỗi khi cập nhật trạng thái:", error);
                 showMessage("Lỗi", `Không thể cập nhật trạng thái: ${error.message}`);
             }
         }
