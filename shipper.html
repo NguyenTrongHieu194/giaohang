@@ -427,7 +427,7 @@
                     <option value="Đã hoàn thành" ${request.status === 'Đã hoàn thành' ? 'selected' : ''}>Đã hoàn thành</option>
                 `;
             } else if (request.type === 'ride_request') {
-                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${request.vehicle}`;
+                details = `Đón: ${request.pickup}<br>Trả: ${request.dropoff}<br>Xe: ${req.vehicle}`;
                 updateOptions = `
                     <option value="Tài xế đang đến đón" ${request.status === 'Tài xế đang đến đón' ? 'selected' : ''}>Đang đến đón</option>
                     <option value="Đang trên đường" ${request.status === 'Đang trên đường' ? 'selected' : ''}>Đang trên đường</option>
@@ -499,13 +499,12 @@
             try {
                 // Corrected: Use the 'functions' object initialized from getFunctions
                 const acceptRequestCallable = httpsCallable(functions, 'acceptRequest'); 
-                const result = await acceptRequestCallable({ data: {
+                // Gửi trực tiếp các tham số, không cần bọc trong đối tượng 'data' nữa
+                const result = await acceptRequestCallable({
                     userId: userId,
                     collectionName: collectionName,
                     requestId: requestId,
                     type: type
-                    // Removed idToken from payload as Cloud Function now relies on context.auth
-                }
                 });
 
                 showMessage("Thành công", result.data.message);

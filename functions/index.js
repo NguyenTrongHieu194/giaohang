@@ -26,9 +26,19 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
     }
     // --- END DEBUGGING LOGS ---
 
-    // 1. Check if user is authenticated via context.auth (this is the standard way for callable functions)
-    // Dựa trên nhật ký, context.auth đã VALID, nên chúng ta sẽ tin tưởng nó.
-    if (!context.auth) {
+    let currentUserId;
+    let userRole;
+
+    // 1. Check if user is authenticated via context.auth (standard for callable functions)
+    if (context.auth && context.auth.uid) {
+        currentUserId = context.auth.uid;
+        userRole = context.auth.token.role;
+        console.log("Authenticated via context.auth. UID:", currentUserId, "Role:", userRole);
+    } else if (data.auth && data.auth.uid) { // Fallback: Check if auth info is directly in data payload (observed in logs)
+        currentUserId = data.auth.uid;
+        userRole = data.auth.token.role;
+        console.log("Authenticated via data.auth. UID:", currentUserId, "Role:", userRole);
+    } else {
         console.error("Authentication context missing. User is not authenticated.");
         throw new functions.https.HttpsError(
             'unauthenticated',
@@ -36,29 +46,12 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
         );
     }
 
-    // Sử dụng thông tin từ context.auth vì nó đã được xác minh bởi Firebase Callable Functions SDK
-    const currentUserId = context.auth.uid;
-    const userRole = context.auth.token.role; // Lấy custom claim 'role' từ token
-
     // 2. Validate input data from 'data' payload
-    // Dựa trên nhật ký, payload thực sự từ client nằm trong data.data
-    const clientPayload = data.data; // Trích xuất payload thực sự
-
-    if (!clientPayload) {
-        console.error("Client payload 'data.data' is missing.");
-        throw new functions.https.HttpsError(
-            'invalid-argument',
-            'Thiếu dữ liệu payload từ client.'
-        );
-    }
-
-    const userIdFromClient = clientPayload.userId; // userId của khách hàng đã tạo yêu cầu
-    const collectionName = clientPayload.collectionName;
-    const requestId = clientPayload.requestId;
-    const type = clientPayload.type;
-
-    // Loại bỏ việc xác minh idToken thủ công vì context.auth đã VALID
-    // và chúng ta đang dựa vào xác minh nội bộ của hàm callable.
+    // Lấy trực tiếp các trường từ đối tượng 'data' vì client đã gửi nó như vậy.
+    const userIdFromClient = data.userId; // userId của khách hàng đã tạo yêu cầu
+    const collectionName = data.collectionName;
+    const requestId = data.requestId;
+    const type = data.type;
 
     if (!userIdFromClient || !collectionName || !requestId || !type) {
         console.error("Missing information in client payload:", { userIdFromClient, collectionName, requestId, type });
