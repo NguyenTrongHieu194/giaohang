@@ -30,15 +30,17 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
     let userRole;
 
     // 1. Check if user is authenticated via context.auth (standard for callable functions)
+    // If context.auth is missing, try to get it from data.auth (observed in logs)
     if (context.auth && context.auth.uid) {
         currentUserId = context.auth.uid;
         userRole = context.auth.token.role;
         console.log("Authenticated via context.auth. UID:", currentUserId, "Role:", userRole);
-    } else if (data.auth && data.auth.uid) { // Fallback: Check if auth info is directly in data payload (observed in logs)
+    } else if (data.auth && data.auth.uid) { // Fallback to data.auth if context.auth is missing
         currentUserId = data.auth.uid;
         userRole = data.auth.token.role;
         console.log("Authenticated via data.auth. UID:", currentUserId, "Role:", userRole);
-    } else {
+    }
+    else {
         console.error("Authentication context missing. User is not authenticated.");
         throw new functions.https.HttpsError(
             'unauthenticated',
@@ -47,11 +49,13 @@ exports.acceptRequest = functions.https.onCall(async (data, context) => {
     }
 
     // 2. Validate input data from 'data' payload
-    // Lấy trực tiếp các trường từ đối tượng 'data' vì client đã gửi nó như vậy.
-    const userIdFromClient = data.userId; // userId của khách hàng đã tạo yêu cầu
-    const collectionName = data.collectionName;
-    const requestId = data.requestId;
-    const type = data.type;
+    // The actual client payload is nested under 'data' property of the main 'data' object.
+    const clientPayload = data.data; 
+    
+    const userIdFromClient = clientPayload.userId; // userId của khách hàng đã tạo yêu cầu
+    const collectionName = clientPayload.collectionName;
+    const requestId = clientPayload.requestId;
+    const type = clientPayload.type;
 
     if (!userIdFromClient || !collectionName || !requestId || !type) {
         console.error("Missing information in client payload:", { userIdFromClient, collectionName, requestId, type });
